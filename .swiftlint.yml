@@ -1,0 +1,54 @@
+included:
+  - Projects
+
+excluded:
+  - "**/Derived"
+  - "**/.build"
+  - Build
+  - dist
+  - Vendor
+  - "Projects/**/Tests"
+  - "Projects/SageTestSupport"
+
+opt_in_rules:
+  - force_unwrapping
+  - empty_count
+  - first_where
+  - last_where
+  - contains_over_filter_count
+  - redundant_nil_coalescing
+  - toggle_bool
+  - unneeded_parentheses_in_closure_argument
+  - closure_spacing
+  - explicit_init
+
+disabled_rules:
+  - trailing_comma
+  - todo
+  - line_length
+  - type_body_length
+  - file_length
+  - function_body_length
+
+force_unwrapping:
+  severity: error
+force_try:
+  severity: error
+force_cast:
+  severity: error
+
+identifier_name:
+  min_length: 1
+  max_length: 60
+  allowed_symbols: ["_"]
+
+type_name:
+  max_length: 60
+
+cyclomatic_complexity:
+  warning: 25
+
+nesting:
+  type_level: 3
+
+reporter: "xcode"

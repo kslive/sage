@@ -1,0 +1,61 @@
+# ── macOS ──────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
+
+# ── Xcode ──────────────────────────────────────────────
+*.xcuserstate
+*.xcscmblueprint
+xcuserdata/
+*.moved-aside
+DerivedData/
+build/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+*.xcresult/
+
+# ── Tuist (генерируемые артефакты) ─────────────────────
+# Project.swift/Workspace.swift и Tuist/ — в репозитории.
+# Сгенерированные проекты/воркспейсы — нет.
+*.xcodeproj/
+*.xcworkspace/
+Derived/
+.tuist-version
+graph.png
+graph.dot
+Tuist/.build/
+
+# ── Swift Package Manager ──────────────────────────────
+.build/
+.swiftpm/
+Package.resolved
+
+# ── Сборка приложения ──────────────────────────────────
+/Build/
+/dist/
+*.app
+*.app.zip
+
+# ── Локальные модели (большие, не версионируем) ────────
+*.gguf
+*.bin
+*.mlmodelc
+Models/
+/DesignRef/*.png
+
+# ── Прочее ─────────────────────────────────────────────
+*.log
+.env
+.mise.local.toml
+
+# Вендоренный llama.xcframework — большой бинарник, не храним в git (есть на диске для сборки)
+Vendor/LLMLocal/llama.cpp/llama.xcframework/
+
+# Локальные настройки Claude Code (личные, не публикуем)
+.claude/settings.local.json

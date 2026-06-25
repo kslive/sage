@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  @font-face { font-family:'General Sans'; src:url('GeneralSans-Regular.otf') format('opentype'); font-weight:400; font-display:swap; }
+  @font-face { font-family:'General Sans'; src:url('GeneralSans-Medium.otf') format('opentype'); font-weight:500; font-display:swap; }
+  @font-face { font-family:'General Sans'; src:url('GeneralSans-Semibold.otf') format('opentype'); font-weight:600; font-display:swap; }
+  @font-face { font-family:'General Sans'; src:url('GeneralSans-Bold.otf') format('opentype'); font-weight:700; font-display:swap; }
+  @font-face { font-family:'Cabinet Grotesk'; src:url('CabinetGrotesk-Bold.otf') format('opentype'); font-weight:700; font-display:swap; }
+  @font-face { font-family:'Cabinet Grotesk'; src:url('CabinetGrotesk-Extrabold.otf') format('opentype'); font-weight:800; font-display:swap; }
+  :root {
+    --bg:#08090a; --bg1:#0b0c0d; --bg2:#101113; --bg3:#17181b;
+    --bd:rgba(255,255,255,.08); --bd2:rgba(255,255,255,.13);
+    --tx:#f7f8f8; --tx2:#9499a1; --tx3:#6a6f78; --ac:#4cc38a; --acs:rgba(76,195,138,.13);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin:0; padding:0; height:100%; background:transparent;
+               font-family:'General Sans',-apple-system,BlinkMacSystemFont,sans-serif; color:var(--tx); }
+  ::-webkit-scrollbar { width:0; height:0; }
+  #editor { height:100vh; }
+
+  /* CodeMirror 6 (source + Live Preview) */
+  .cm-editor { height:100%; background:transparent; }
+  .cm-editor.cm-focused { outline:none; }
+  /* Layout колонки (ширина/центрирование/паддинг/шрифт) задаётся в baseTheme (EditorView.theme),
+     т.к. база CM6 перебивает простые селекторы index.html по специфичности. Здесь — только скролл. */
+  .cm-scroller { overflow-y:auto; overflow-x:hidden; scrollbar-gutter:stable; }
+  .cm-content { caret-color:var(--ac); color:var(--tx); }
+  .cm-line { padding:2px 0; }
+  .cm-cursor { border-left-color:var(--ac); }
+  .cm-selectionBackground, .cm-content ::selection { background:var(--acs) !important; }
+  .cm-activeLine { background:transparent; }
+  .cm-gutters { display:none; }
+
+  /* Live Preview инлайн-стили */
+  .tok-strong { font-weight:700; color:var(--tx); }
+  .tok-em { font-style:italic; }
+  .tok-strike { text-decoration:line-through; color:var(--tx2); }
+  .tok-code { font-family:ui-monospace,'SF Mono',monospace; font-size:.86em; background:var(--bg3);
+    color:var(--ac); padding:2px 6px; border-radius:5px; }
+  .tok-link { color:var(--ac); text-decoration:none; cursor:pointer; }
+  .tok-link:hover { text-decoration:underline; text-underline-offset:2px; }
+  .tok-url { color:var(--tx3); }
+  .tok-hidden { display:none; }
+  .tok-mark { color:var(--tx3); }
+
+  /* блочные стили по строкам */
+  /* размеры/веса как в макете SageEditor.dc.html (база 15px) */
+  .ln-h1 { font-family:'Cabinet Grotesk',sans-serif; font-size:34px; font-weight:700; letter-spacing:-.025em; line-height:1.15; padding-top:8px; }
+  .ln-h2 { font-family:'Cabinet Grotesk',sans-serif; font-size:21px; font-weight:660; letter-spacing:-.015em; line-height:1.3; padding-top:16px; }
+  .ln-h3 { font-size:17px; font-weight:600; letter-spacing:-.01em; padding-top:10px; }
+  .ln-h4 { font-size:15.5px; font-weight:600; padding-top:6px; }
+  .ln-quote { border-left:3px solid var(--ac); padding-left:14px; color:var(--tx2); font-style:italic; }
+  .ln-code { font-family:ui-monospace,'SF Mono',monospace; font-size:13px; background:var(--bg2); }
+  .ln-code-first { border-top-left-radius:10px; border-top-right-radius:10px; padding-top:6px; }
+  .ln-code-last { border-bottom-left-radius:10px; border-bottom-right-radius:10px; padding-bottom:6px; }
+  /* Notion-стиль код-блок (виджет, ограждения ``` скрыты) */
+  .cm-code-block { background:var(--bg2); border:1px solid var(--bd); border-radius:10px; overflow:hidden; }
+  .cm-code-label { font:600 11px ui-monospace,'SF Mono',monospace; color:var(--tx3); letter-spacing:.04em;
+    padding:6px 13px; background:var(--bg1); border-bottom:1px solid var(--bd); text-transform:lowercase; }
+  .cm-code-content { font-family:ui-monospace,'SF Mono',monospace; font-size:13px; color:var(--tx);
+    line-height:1.55; margin:0; padding:11px 13px; overflow-x:auto; white-space:pre; max-width:100%; }
+  .ln-hr { color:var(--tx3); }
+
+  /* чек-боксы задач */
+  /* inline-flex с vertical-align:baseline давал РАЗНЫЙ baseline для пустого бокса и бокса с ✓
+     (один выше, другой ниже). Фикс: vertical-align:middle (центр бокса ↔ центр текста, одинаково для
+     обоих состояний) + галочку рисуем ABSOLUTE (не влияет на baseline). */
+  .cm-checkbox { display:inline-block; position:relative;
+    width:16px; height:16px; margin-right:8px; vertical-align:middle; cursor:pointer;
+    box-sizing:border-box;
+    border:1.5px solid var(--bd2); border-radius:5px; transition:background .12s, border-color .12s; }
+  .cm-checkbox:hover { border-color:var(--ac); }
+  .cm-checkbox-on { background:var(--ac); border-color:var(--ac); }
+  .cm-checkbox-on::after { content:"✓"; position:absolute; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    color:#08090a; font:700 10px -apple-system,sans-serif; line-height:1; }
+  /* маркер списка → точка по центру */
+  .cm-bullet { display:inline-block; width:1em; margin-right:4px; text-align:center;
+    color:var(--ac); font-weight:700; vertical-align:baseline; }
+  /* разделитель — настоящая линия */
+  .cm-hr { height:0; border-top:1px solid var(--bd2); }
+
+  /* Внешняя обёртка блок-виджета: ритм через padding (CM6 меряет высоту без margin). */
+  .cm-bw { padding:4px 0 18px; max-width:100%; }
+  /* ── Obsidian-style callouts ── */
+  .cm-callout { padding:12px 15px 13px; border-radius:11px;
+    border:1px solid var(--bd); border-left:3px solid var(--cg-ac, var(--ac));
+    background:var(--cg-bg, var(--acs)); }
+  .cm-callout-head { display:flex; align-items:center; gap:9px;
+    font:600 14.5px 'General Sans',-apple-system,sans-serif; color:var(--tx); }
+  .cm-callout-ic { font-size:15px; line-height:1; filter:saturate(1.1); }
+  .cm-callout-title { color:var(--cg-ac, var(--ac)); letter-spacing:-.01em; }
+  .cm-callout-body { margin-top:7px; color:var(--tx); font-size:15px; line-height:1.62; }
+  .cm-callout-body > div { margin:2px 0; }
+  .cm-callout-sp { height:8px; }
+  .cm-callout-ul { margin:4px 0; padding-left:20px; }
+  .cm-callout-ul li { margin:2px 0; }
+  /* цветовые группы (акцент + фон 8-10%) */
+  .cm-cg-note     { --cg-ac:#5b9bd5; --cg-bg:rgba(91,155,213,.09); }
+  .cm-cg-abstract { --cg-ac:#43c2b8; --cg-bg:rgba(67,194,184,.09); }
+  .cm-cg-tip      { --cg-ac:#4cc38a; --cg-bg:rgba(76,195,138,.10); }
+  .cm-cg-success  { --cg-ac:#52c41a; --cg-bg:rgba(82,196,26,.09); }
+  .cm-cg-question { --cg-ac:#e0b341; --cg-bg:rgba(224,179,65,.09); }
+  .cm-cg-warning  { --cg-ac:#e0922f; --cg-bg:rgba(224,146,47,.10); }
+  .cm-cg-fail     { --cg-ac:#e25563; --cg-bg:rgba(226,85,99,.09); }
+  .cm-cg-danger   { --cg-ac:#e2444a; --cg-bg:rgba(226,68,74,.10); }
+  .cm-cg-example  { --cg-ac:#a472e0; --cg-bg:rgba(164,114,224,.10); }
+  .cm-cg-quote    { --cg-ac:#9499a1; --cg-bg:rgba(148,153,161,.08); }
+
+  /* ── таблицы как в Obsidian ── */
+  .cm-md-tablewrap { overflow-x:auto; max-width:100%; }
+  .cm-md-table { border-collapse:collapse; width:auto; max-width:100%;
+    font-size:14px; color:var(--tx); border:1px solid var(--bd2); border-radius:9px; overflow:hidden; }
+  .cm-md-table th, .cm-md-table td { padding:7px 14px; border:1px solid var(--bd2); vertical-align:top; }
+  .cm-md-table thead th { background:var(--bg2); font-weight:600; color:var(--tx); white-space:nowrap; }
+  .cm-md-table tbody tr:nth-child(even) td { background:rgba(255,255,255,.018); }
+
+  /* ── frontmatter → панель «Свойства» ── */
+  .cm-frontmatter { padding:12px 15px; border:1px solid var(--bd);
+    border-radius:11px; background:var(--bg1); }
+  .cm-fm-cap { font:600 11px 'General Sans',sans-serif; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--tx3); margin-bottom:8px; }
+  .cm-fm-row { display:flex; gap:14px; padding:3px 0; font-size:13.5px; }
+  .cm-fm-key { flex:0 0 110px; color:var(--tx2); }
+  .cm-fm-val { color:var(--tx); }
+
+  .sage-marksel { background:var(--acs); border-radius:3px; box-shadow:0 0 0 1px var(--acs); }
+
+  .sage-seltoolbar { position:fixed; z-index:60; display:none; align-items:center; gap:2px;
+    padding:4px 5px; border-radius:10px; background:var(--bg2); border:1px solid var(--bd2);
+    box-shadow:0 10px 30px rgba(0,0,0,.45); }
+  .sage-seltoolbar button { border:0; background:transparent; color:var(--tx); cursor:pointer;
+    font:600 12.5px -apple-system,'General Sans',sans-serif; width:28px; height:26px; border-radius:6px; }
+  .sage-seltoolbar button:hover { background:var(--bg3); }
+  .sage-seltoolbar button.i { font-style:italic; } .sage-seltoolbar button.s { text-decoration:line-through; }
+  .sage-seltoolbar button.mono { font-family:ui-monospace,monospace; font-size:11px; }
+  .sage-seltoolbar button.lnk { display:inline-flex; align-items:center; justify-content:center; }
+  .sage-seltoolbar button.lnk svg { display:block; }
+  .sage-seltoolbar .sep { width:1px; height:18px; background:var(--bd); margin:0 3px; }
+
+  .sage-slash { position:fixed; z-index:60; display:none; width:248px; max-height:300px; overflow:auto;
+    padding:6px; border-radius:11px; background:var(--bg2); border:1px solid var(--bd2);
+    box-shadow:0 12px 32px rgba(0,0,0,.5); }
+  .sage-slash .row { display:flex; align-items:center; gap:10px; padding:7px 9px; border-radius:7px;
+    color:var(--tx); font:500 13px -apple-system,'General Sans',sans-serif; cursor:pointer; }
+  .sage-slash .row.sel { background:var(--bg3); }
+  .sage-slash .row .ic { width:26px; height:26px; flex:none; display:flex; align-items:center;
+    justify-content:center; border-radius:6px; background:var(--bg1); border:1px solid var(--bd);
+    font:500 11px ui-monospace,monospace; color:var(--tx2); }
+  .sage-slash .row .ic svg { display:block; }
+</style>
+</head>
+<body>
+<div id="editor"></div>
+<script src="editor.js"></script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+# SwiftFormat — конфигурация Sage
+--swiftversion 5.10
+
+# Файлы/папки вне форматирования
+--exclude Derived,.build,Build,dist,DesignRef,**/Derived
+
+# Стиль
+--indent 4
+--maxwidth 120
+--wraparguments before-first
+--wrapparameters before-first
+--wrapcollections before-first
+--commas inline
+--trimwhitespace always
+--semicolons never
+--self remove
+--importgrouping testable-bottom
+--stripunusedargs closure-only
+
+# Отключаем правила, конфликтующие со SwiftUI-стилем
+--disable redundantReturn, wrapMultilineStatementBraces
+--enable isEmpty, sortImports, blankLinesAtStartOfScope
