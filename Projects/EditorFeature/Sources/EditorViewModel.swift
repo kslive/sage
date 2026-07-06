@@ -67,6 +67,13 @@ public final class EditorViewModel {
     /// Текст, КАК НА ДИСКЕ (последняя загрузка/запись). Если `text == diskSnapshot` — реальных правок нет,
     /// и сохранять НЕ нужно: иначе пустая перезапись бампит mtime → файл «фантомно» уезжает вверх по дате.
     private var diskSnapshot = ""
+    /// Идёт git-sync: worktree принадлежит git (`pull --rebase`), дебаунс-сейвы откладываются —
+    /// запись посреди rebase валит его, а `rebase --abort` (reset --hard) откатил бы файл к коммиту.
+    private var gitSyncActive = false
+    /// Во время sync был отложен дебаунс-сейв — записать его сразу по завершении sync.
+    private var pendingSyncSave = false
+    /// Страховка от залипшего `gitSyncActive` (если `.sageGitSynced` не дойдёт) — авто-сброс.
+    private var syncGuardTask: Task<Void, Never>?
     private let vault: VaultServicing
     private let markdown: MarkdownRendering
     private let ai: AICoordinating
@@ -149,6 +156,30 @@ public final class EditorViewModel {
         return true
     }
 
+    /// Git-sync начался: до `gitSyncEnded()` дебаунс-сейвы НЕ пишут на диск (см. `gitSyncActive`).
+    /// `flushSave()` пишет всегда — семантика «обязан записать» (Cmd-Q, смена файла) важнее.
+    public func gitSyncBegan() {
+        gitSyncActive = true
+        syncGuardTask?.cancel()
+        syncGuardTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(60))
+            guard !Task.isCancelled, let self, self.gitSyncActive else { return }
+            _ = self.gitSyncEnded()
+        }
+    }
+
+    /// Git-sync завершился. Если во время sync был отложен сейв — записать нашу версию (она новее
+    /// дисковой) и вернуть true: вызывающий пропускает `reconcileExternal` (диск уже равен тексту).
+    public func gitSyncEnded() -> Bool {
+        syncGuardTask?.cancel()
+        gitSyncActive = false
+        guard pendingSyncSave else { return false }
+        pendingSyncSave = false
+        guard text != diskSnapshot else { return false }
+        flushSave()
+        return true
+    }
+
     /// Переключение на другой файл БЕЗ пересоздания редактора (живой webview) — нет лага открытия.
     public func switchTo(_ url: URL?) async {
         flushSave()
@@ -187,6 +218,7 @@ public final class EditorViewModel {
     /// Прямая запись (не Task.detached) — иначе при Cmd-Q процесс завершается раньше, чем успеет таск.
     public func flushSave() {
         saveTask?.cancel()
+        pendingSyncSave = false
         guard let url = loadedURL else { return }
         guard text != diskSnapshot else { return }
         guard FileManager.default.fileExists(atPath: url.path) else { return }
@@ -206,6 +238,7 @@ public final class EditorViewModel {
             guard !Task.isCancelled else { return }
             guard let self, self.loadedURL == url else { return }
             guard snapshot != self.diskSnapshot else { return }
+            if self.gitSyncActive { self.pendingSyncSave = true; return }
             guard FileManager.default.fileExists(atPath: url.path) else { return }
             try? await self.vault.writeNote(NoteDocument(url: url, text: snapshot, modifiedAt: Date()))
             self.diskSnapshot = snapshot

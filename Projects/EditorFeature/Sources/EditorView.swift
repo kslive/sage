@@ -108,8 +108,12 @@ public struct EditorView: View {
                   url.standardizedFileURL == open.standardizedFileURL else { return }
             Task { await vm.load(); webCtrl.setDoc(vm.text) }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .sageGitSyncBegan)) { _ in vm.gitSyncBegan() }
         .onReceive(NotificationCenter.default.publisher(for: .sageGitSynced)) { _ in
-            Task { if await vm.reconcileExternal() { webCtrl.setDoc(vm.text) } }
+            Task {
+                guard !vm.gitSyncEnded() else { return }
+                if await vm.reconcileExternal() { webCtrl.setDoc(vm.text) }
+            }
         }
         .onDisappear { vm.flushSave(); vm.cancelInFlightAI() }
         .onReceive(NotificationCenter.default.publisher(for: .sageFlushAll)) { _ in vm.flushSave() }

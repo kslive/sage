@@ -19,10 +19,6 @@ struct RealAICoordinator: AICoordinating {
         await models.localURLForLLM(settings.activeLLMId) != nil
     }
 
-    func warmUp() async {
-        try? await ensureLoaded()
-    }
-
     private func ensureLoaded() async throws {
         guard let spec = ModelCatalog.llm(id: settings.activeLLMId),
               let url = await models.localURLForLLM(spec.id) else {

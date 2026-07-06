@@ -114,12 +114,10 @@ public final class MockAICoordinating: AICoordinating, @unchecked Sendable {
     public var ready = true
     public private(set) var chatCount = 0
     public private(set) var editorCount = 0
-    public private(set) var warmUpCount = 0
 
     public init() {}
 
     public func isReady() async -> Bool { ready }
-    public func warmUp() async { warmUpCount += 1 }
 
     public func runEditorAction(_ action: AIAction, selection: String, document: String, userPrompt: String)
         -> AsyncThrowingStream<String, Error> {

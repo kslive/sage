@@ -17,6 +17,10 @@ public extension Notification.Name {
     /// Сессия чата удалена из стора (object: ChatContext удалённой беседы) — App инвалидирует
     /// keep-alive VM этого контекста, чтобы переоткрытие не показало старые сообщения из памяти.
     static let sageChatSessionDeleted = Notification.Name("sage.chat.sessionDeleted")
+    /// Git-синхронизация началась: редактор ОТКЛАДЫВАЕТ дебаунс-сейвы до `.sageGitSynced`
+    /// (запись на диск посреди `pull --rebase` → падение rebase → `--abort` = reset --hard,
+    /// который откатил бы файл к закоммиченной версии — потеря набранного текста).
+    static let sageGitSyncBegan = Notification.Name("sage.git.syncBegan")
     /// Git-синхронизация завершена (ручная или авто): дерево перечитывается, открытый файл
     /// сверяется с диском (подтянутая версия не теряется). Отдельно от vaultChanged — нет петли auto-sync.
     static let sageGitSynced = Notification.Name("sage.git.synced")

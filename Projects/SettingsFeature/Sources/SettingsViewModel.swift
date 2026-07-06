@@ -86,6 +86,8 @@ public final class SettingsViewModel {
         guard let url = settings.resolveVaultURL(), !remoteInput.isEmpty else { return }
         Keychain.set(tokenInput.isEmpty ? nil : tokenInput, account: Keychain.gitTokenAccount(for: url.path))
         gitSyncing = true
+        NotificationCenter.default.post(name: .sageFlushAll, object: nil)
+        NotificationCenter.default.post(name: .sageGitSyncBegan, object: nil)
         let mergeMsg = Formatting.gitCommitMessage(action: strings.git.commitMerge, date: Date())
         Task {
             var errorText: String?
@@ -108,6 +110,10 @@ public final class SettingsViewModel {
     public func syncNow() {
         guard let url = settings.resolveVaultURL() else { return }
         gitSyncing = true
+        /// Флаш до коммита (иначе уйдёт устаревшая дисковая версия) + сигнал редактору
+        /// отложить дебаунс-сейвы до `.sageGitSynced` (запись посреди rebase разрушительна).
+        NotificationCenter.default.post(name: .sageFlushAll, object: nil)
+        NotificationCenter.default.post(name: .sageGitSyncBegan, object: nil)
         let message = Formatting.gitCommitMessage(action: strings.git.commitAutoSync, date: Date())
         Task {
             let outcome = await git.sync(at: url, message: message)

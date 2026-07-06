@@ -6,9 +6,6 @@ public protocol AICoordinating: Sendable {
     /// Готов ли ИИ (модель загружена/доступна).
     func isReady() async -> Bool
 
-    /// Прогрев: загрузить активную модель в память заранее (первый ответ без лага).
-    func warmUp() async
-
     /// Инлайн-действие редактора (продолжить/резюме/улучшить/спросить).
     func runEditorAction(_ action: AIAction, selection: String, document: String, userPrompt: String)
         -> AsyncThrowingStream<String, Error>

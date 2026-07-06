@@ -17,7 +17,9 @@ public final class ModelService: NSObject, ModelManaging, URLSessionDownloadDele
     public static let shared = ModelService()
 
     /// Hub для MLX-моделей: качает репозитории в `<App Support>/Sage/models/llm/models/<repoId>`.
-    private var llmHub: HubApi { HubApi(downloadBase: ModelStorage.llmHubBase()) }
+    /// Stored (не computed): init HubApi стартует его NetworkMonitor уже при запуске приложения —
+    /// к моменту первой загрузки состояние сети устоялось, и snapshot не уходит ложно в offline-ветку.
+    private let llmHub = HubApi(downloadBase: ModelStorage.llmHubBase())
     private let llmLock = NSLock()
     private var llmTasks: [String: Task<Void, Never>] = [:]
 
@@ -137,10 +139,23 @@ public final class ModelService: NSObject, ModelManaging, URLSessionDownloadDele
                 }
                 do {
                     let repo = Hub.Repo(id: spec.repoId, type: .models)
-                    _ = try await hub.snapshot(
-                        from: repo,
-                        matching: ["*.safetensors", "*.json", "*.txt", "*.py", "tokenizer*", "*.tiktoken", "*.model"]
-                    ) { (_: Progress, speed: Double?) in speedBox.store(speed ?? 0) }
+                    func fetch() async throws {
+                        _ = try await hub.snapshot(
+                            from: repo,
+                            matching: ["*.safetensors", "*.json", "*.txt", "*.py", "tokenizer*", "*.tiktoken", "*.model"]
+                        ) { (_: Progress, speed: Double?) in speedBox.store(speed ?? 0) }
+                    }
+                    do {
+                        try await fetch()
+                    } catch let error as HubApi.EnvironmentError {
+                        /// swift-transformers 0.1.24: NetworkMonitor стартует с isConnected=false и получает
+                        /// первый NWPath-апдейт асинхронно — самый первый snapshot может ложно уйти в
+                        /// offline-ветку и мгновенно бросить offlineModeError на свежей машине.
+                        /// Одна повторная попытка после паузы; реальный офлайн упадёт и на ней.
+                        guard case .offlineModeError = error else { throw error }
+                        try await Task.sleep(nanoseconds: 1_500_000_000)
+                        try await fetch()
+                    }
                     poller.cancel(); _ = await poller.value
                     if Task.isCancelled { continuation.finish(); return }
                     if ModelStorage.isValidModelDir(dir) {

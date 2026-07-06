@@ -131,6 +131,44 @@ final class EditorViewModelTests: XCTestCase {
         XCTAssertEqual(vm.text, "v1")
     }
 
+    // MARK: - Отложенный сейв во время git-sync (запись посреди rebase разрушительна, Ит.63)
+
+    /// Пока идёт git-sync, дебаунс-сейв НЕ пишет на диск (worktree принадлежит rebase);
+    /// по завершении sync отложенный текст записывается, reconcile пропускается (true).
+    func testDebouncedSaveDeferredDuringGitSync() async throws {
+        let url = temp.write("note.md", "v1")
+        vault.docs[url.path] = NoteDocument(url: url, text: "v1", modifiedAt: Date())
+        let vm = makeVM(fileURL: url)
+        await vm.load()
+        vm.gitSyncBegan()
+        vm.onEditorText("typed during sync")
+        try await Task.sleep(nanoseconds: 900_000_000)
+        XCTAssertTrue(vault.written.isEmpty, "дебаунс-запись должна быть отложена до конца sync")
+        XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), "v1")
+        XCTAssertTrue(vm.gitSyncEnded(), "отложенный сейв должен записаться на завершении sync")
+        XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), "typed during sync")
+    }
+
+    /// flushSave (Cmd-Q, смена файла) пишет ВСЕГДА, даже при активном sync — «обязан записать».
+    func testFlushSaveWritesEvenDuringGitSync() async throws {
+        let url = temp.write("note.md", "v1")
+        vault.docs[url.path] = NoteDocument(url: url, text: "v1", modifiedAt: Date())
+        let vm = makeVM(fileURL: url)
+        await vm.load()
+        vm.gitSyncBegan()
+        vm.onEditorText("must flush")
+        vm.flushSave()
+        XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), "must flush")
+        XCTAssertFalse(vm.gitSyncEnded(), "после flush отложенного сейва не остаётся — reconcile идёт")
+    }
+
+    /// Без отложенного сейва завершение sync возвращает false → вызывающий выполняет reconcileExternal.
+    func testGitSyncEndedWithoutPendingSaveAllowsReconcile() {
+        let vm = makeVM()
+        vm.gitSyncBegan()
+        XCTAssertFalse(vm.gitSyncEnded())
+    }
+
     // MARK: - inlineIntent (детерминированная классификация намерения инлайна)
 
     func testInlineIntentEditVerbs() {
@@ -346,7 +384,6 @@ private final class SlowAICoordinating: AICoordinating, @unchecked Sendable {
     init(tokens: [String], delayMs: UInt64) { self.tokens = tokens; self.delayMs = delayMs }
 
     func isReady() async -> Bool { true }
-    func warmUp() async {}
 
     func runEditorAction(_ action: AIAction, selection: String, document: String, userPrompt: String)
         -> AsyncThrowingStream<String, Error> {

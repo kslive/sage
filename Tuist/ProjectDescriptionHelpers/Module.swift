@@ -17,8 +17,8 @@ public enum Sage {
             "PROVISIONING_PROFILE_SPECIFIER": "",
             "CODE_SIGNING_REQUIRED": "NO",
             "ENABLE_HARDENED_RUNTIME": "NO",
-            "MARKETING_VERSION": "1.0.0",
-            "CURRENT_PROJECT_VERSION": "1",
+            "MARKETING_VERSION": "1.0.1",
+            "CURRENT_PROJECT_VERSION": "2",
             "ENABLE_USER_SCRIPT_SANDBOXING": "NO",
             "DEAD_CODE_STRIPPING": "YES",
         ]

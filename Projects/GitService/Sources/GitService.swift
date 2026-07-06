@@ -186,7 +186,9 @@ public actor GitService: GitServicing {
         let transport = transport(at: url)
         let remoteHasBranch = run(["ls-remote", "--heads", transport, branch], in: url).out.contains(branch)
         if remoteHasBranch {
-            let pull = run(["pull", "--rebase", transport, branch], in: url)
+            /// --autostash: запись, легшая на диск между commitAll и rebase (дебаунс-сейв редактора),
+            /// не валит pull и не теряется — стэшится и восстанавливается после rebase.
+            let pull = run(["pull", "--rebase", "--autostash", transport, branch], in: url)
             if pull.code != 0 {
                 if rebaseInProgress(at: url) || hasUnmerged(at: url) {
                     let file = firstConflictFile(in: url)

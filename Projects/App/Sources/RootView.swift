@@ -162,7 +162,6 @@ struct MainShellView: View {
             await runAutoSync()
             updaterVM.checkInBackground()
             startUpdatePoll()
-            await composition.ai.warmUp()
         }
         .onChange(of: updaterVM.phase) { _, phase in handleUpdatePhase(phase) }
         .onChange(of: whisperURL) { _, url in
@@ -507,6 +506,11 @@ struct MainShellView: View {
         guard settings.autoSync, settings.gitFrequency.isAutomatic, gitConnected,
               !gitSyncInFlight, let url = settings.resolveVaultURL() else { return }
         gitSyncInFlight = true
+        /// Флаш ДО коммита: иначе sync закоммитит устаревшую (для свежей заметки — пустую) дисковую
+        /// версию, а набранный текст останется только в памяти редактора. Затем — сигнал редактору
+        /// отложить дебаунс-сейвы до конца sync (запись посреди rebase → abort откатил бы файл).
+        NotificationCenter.default.post(name: .sageFlushAll, object: nil)
+        NotificationCenter.default.post(name: .sageGitSyncBegan, object: nil)
         let message = Formatting.gitCommitMessage(action: s.git.commitAutoSync, date: Date())
         let outcome = await composition.git.sync(at: url, message: message)
         lastGitSyncAt = Date()

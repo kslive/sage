@@ -138,6 +138,8 @@ let app = Target.target(
     deploymentTargets: Sage.deployment,
     infoPlist: .extendingDefault(with: [
         "CFBundleDisplayName": "Sage",
+        "CFBundleShortVersionString": "$(MARKETING_VERSION)",
+        "CFBundleVersion": "$(CURRENT_PROJECT_VERSION)",
         "LSMinimumSystemVersion": "15.0",
         "LSApplicationCategoryType": "public.app-category.productivity",
         "NSHumanReadableCopyright": "Sage — локальный ИИ-редактор заметок.",

@@ -15,14 +15,42 @@ public actor InferenceService: Inferencing {
 
     private var generating = false
     private var waiters: [CheckedContinuation<Void, Never>] = []
+    /// Отложенная выгрузка модели по простою (см. `scheduleIdleUnload`).
+    private var unloadTask: Task<Void, Never>?
 
     private func acquire() async {
+        unloadTask?.cancel()
         if !generating { generating = true; return }
         await withCheckedContinuation { waiters.append($0) }
     }
     private func release() {
-        if waiters.isEmpty { generating = false }
-        else { waiters.removeFirst().resume() }
+        if waiters.isEmpty {
+            generating = false
+            /// Вернуть буферный кэш MLX (до cacheLimit ~256 МБ) сразу после ответа,
+            /// не дожидаясь idle-выгрузки весов.
+            MLX.GPU.clearCache()
+            scheduleIdleUnload()
+        } else {
+            waiters.removeFirst().resume()
+        }
+    }
+
+    /// Выгрузка модели после простоя: веса (4-5 ГБ Metal-буферов для 8B) не должны жить в памяти,
+    /// когда ИИ не используется. Грейс 60 с — follow-up в живом диалоге не платит перезагрузку;
+    /// следующий запрос после выгрузки перезагрузит модель через `load()` (~2-5 с, виден «думает»).
+    private func scheduleIdleUnload() {
+        unloadTask?.cancel()
+        unloadTask = Task {
+            try? await Task.sleep(for: .seconds(60))
+            guard !Task.isCancelled else { return }
+            unloadIfIdle()
+        }
+    }
+
+    private func unloadIfIdle() {
+        guard !generating, waiters.isEmpty, container != nil else { return }
+        container = nil
+        MLX.GPU.clearCache()
     }
 
     public init() {}
@@ -39,6 +67,7 @@ public actor InferenceService: Inferencing {
 
     public func load(modelURL: URL, template: PromptTemplate, contextSize: Int) async throws {
         applyMemoryLimits()
+        unloadTask?.cancel()
         let limits = InferenceLimits(contextSize: contextSize)
         contextLimit = limits.context
         maxKV = limits.maxKV
@@ -47,6 +76,7 @@ public actor InferenceService: Inferencing {
             container = try await LLMModelFactory.shared.loadContainer(
                 configuration: ModelConfiguration(directory: modelURL))
             loadedURL = modelURL
+            scheduleIdleUnload()
         } catch {
             container = nil
             throw InferenceError.loadFailed
