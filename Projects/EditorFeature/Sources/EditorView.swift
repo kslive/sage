@@ -96,7 +96,18 @@ public struct EditorView: View {
             applyPending = false
             webCtrl.clearMark()
             webCtrl.beginSwitch()
-            Task { await vm.switchTo(new) }
+            Task {
+                /// Вытянуть невысланный JS-буфер (дебаунс) ДО загрузки нового файла — иначе
+                /// setState нового документа уничтожает весь непрерывный набор старого.
+                if let latest = await webCtrl.fetchDoc() {
+                    vm.adoptWebText(latest)
+                    webCtrl.noteWebTextAdopted(latest)
+                }
+                await vm.switchTo(new)
+                /// Безусловный push после переключения: ресинк JS-эпохи даже при равном контенте
+                /// (иначе эпоха-латч молча глотал весь дальнейший ввод) + свежая undo-история.
+                if vm.fileURL == new { webCtrl.setDoc(vm.text) }
+            }
         }
         .onChange(of: aiInvokeNonce) { _, _ in if vm.fileURL != nil { openAI() } }
         .onChange(of: vm.scrollTarget) { _, t in if let t { webCtrl.scrollToHeading(t) } }

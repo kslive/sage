@@ -7,11 +7,11 @@ import { EditorState, Compartment } from "@codemirror/state";
 import { EditorView, keymap, drawSelection, dropCursor } from "@codemirror/view";
 import { history, historyKeymap, defaultKeymap, indentWithTab } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
-import { forceParsing } from "@codemirror/language";
+import { forceParsing, syntaxTree } from "@codemirror/language";
 import {
   markField, setMark, clearMark, focusField, setFocus, blockField, livePreviewPlugin, baseTheme,
   isLivePreview, setLivePreview, setBaseFolder, bodyStartOffset, decideToggle, linkMarkdown, SLASH_RE,
-  shouldCollapseClick,
+  shouldCollapseClick, docSendDelay, autoPeriodBefore,
 } from "./core.js";
 
 function send(msg) { try { window.webkit.messageHandlers.sage.postMessage(msg); } catch (e) {} }
@@ -21,18 +21,22 @@ let view = null;
 let currentEpoch = 0;
 let suppress = false;       // не слать doc во время программной установки документа
 let docTimer = null, selTimer = null;
+let docFirstPendingAt = 0;  // время первого несохранённого ввода (для maxWait)
 
 const previewCompartment = new Compartment();
 
 // ── Сохранение (только реальные правки пользователя; текст = сырой, без нормализации) ──
 function scheduleDoc() {
   if (suppress) return;
+  const now = Date.now();
+  if (!docFirstPendingAt) docFirstPendingAt = now;
   if (docTimer) clearTimeout(docTimer);
   const epoch = currentEpoch;
   docTimer = setTimeout(() => {
+    docTimer = null; docFirstPendingAt = 0;
     if (!view) return;
     send({ type: "doc", text: view.state.doc.toString(), epoch });
-  }, 250);
+  }, docSendDelay(now, docFirstPendingAt));
 }
 function emitSelection() {
   if (!view) return;
@@ -246,6 +250,18 @@ const sageKeymap = keymap.of([
   { key: "Mod-i", run: () => { fmt.italic(); return true; } },
   { key: "Mod-e", run: () => { fmt.code(); return true; } },
   { key: "Mod-j", run: () => { requestAINow(); return true; } },
+  { key: "Space", run: (v) => {
+    // Двойной пробел после слова → «. » (как в macOS). В коде не срабатывает — точка сломала бы код.
+    const s = v.state.selection.main;
+    if (!s.empty || s.from < 2) return false;
+    if (!autoPeriodBefore(v.state.doc.sliceString(s.from - 2, s.from))) return false;
+    for (let n = syntaxTree(v.state).resolveInner(s.from, -1); n; n = n.parent) {
+      if (/FencedCode|CodeBlock|InlineCode|CodeText/.test(n.name)) return false;
+    }
+    v.dispatch({ changes: { from: s.from - 1, to: s.from, insert: ". " },
+                 selection: { anchor: s.from + 1 }, userEvent: "input.type" });
+    return true;
+  } },
   { key: "ArrowDown", run: () => { if (slashOpen) { slashIndex = Math.min(SLASH.length - 1, slashIndex + 1); renderSlash(); return true; } return false; } },
   { key: "ArrowUp", run: () => { if (slashOpen) { slashIndex = Math.max(0, slashIndex - 1); renderSlash(); return true; } return false; } },
   { key: "Enter", run: () => { if (slashOpen) { chooseSlash(slashIndex); return true; } return false; } },
@@ -318,6 +334,7 @@ window.sageSetDoc = (md, epoch) => {
   if (typeof epoch === "number") currentEpoch = epoch;
   if (!view) return;
   if (docTimer) { clearTimeout(docTimer); docTimer = null; }
+  docFirstPendingAt = 0;
   suppress = true;
   // НОВЫЙ state → undo-история пустая (нет отката к содержимому прошлого файла).
   view.setState(makeState(md || ""));
@@ -378,8 +395,12 @@ window.sageInsertImage = (rel) => insertText("\n![](" + rel + ")\n");
 window.sageFlushDoc = () => {
   if (!view) return;
   if (docTimer) { clearTimeout(docTimer); docTimer = null; }
+  docFirstPendingAt = 0;
   send({ type: "doc", text: view.state.doc.toString(), epoch: currentEpoch, flush: true });
 };
+// Прямое чтение текущего документа Swift-стороной (RPC, минуя debounce). Эпоха — для валидации
+// на приёме: ответ, прилетевший после следующего setDoc, относится к ЧУЖОМУ документу.
+window.sageGetDoc = () => view ? ({ text: view.state.doc.toString(), epoch: currentEpoch }) : null;
 window.sageSetBase = (p) => { setBaseFolder(p); if (view) view.dispatch({ effects: previewCompartment.reconfigure(previewExtensions()) }); };
 
 // ── Клики по ссылкам + вставка/дроп картинок ─────────────────────────────────

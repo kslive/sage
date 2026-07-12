@@ -14,6 +14,9 @@ public final class WebEditorController {
     /// Поколение документа: растёт на setDoc/beginSwitch; «хвостовые» doc-сообщения старого
     /// поколения отбрасываются (анти-перезапись). Доступен на чтение тестам.
     public private(set) var epoch = 0
+    /// Эпоха ПОСЛЕДНЕГО реального push в webview (setDoc). JS `currentEpoch` равен именно ей —
+    /// beginSwitch поднимает `epoch`, не трогая JS. Нужна для валидации ответа fetchDoc.
+    public private(set) var lastPushedEpoch = 0
     public fileprivate(set) var selectedText = ""
 
     public init() {}
@@ -33,9 +36,35 @@ public final class WebEditorController {
 
     func setDoc(_ text: String) {
         epoch += 1
+        lastPushedEpoch = epoch
         jsText = text
         run("window.sageSetDoc(\(Self.jsString(text)), \(epoch))")
     }
+
+    /// Прямое вытягивание JS-буфера (минуя debounce) — несохранённый набор при переключении файла.
+    /// Текст принимается ТОЛЬКО если эпоха JS на момент ответа == эпохе последнего setDoc: ответ,
+    /// прилетевший после следующего setDoc, относится к ЧУЖОМУ документу (анти-stale-fetch).
+    public func fetchDoc() async -> String? {
+        guard let webView, ready else { return nil }
+        return await withCheckedContinuation { cont in
+            webView.evaluateJavaScript("window.sageGetDoc && window.sageGetDoc()") { [weak self] res, _ in
+                cont.resume(returning: Self.acceptFetched(res, lastPushedEpoch: self?.lastPushedEpoch ?? -1))
+            }
+        }
+    }
+
+    /// Чистая валидация ответа sageGetDoc (тестируется без WKWebView).
+    static func acceptFetched(_ res: Any?, lastPushedEpoch: Int) -> String? {
+        guard let dict = res as? [String: Any],
+              let text = dict["text"] as? String,
+              let epoch = dict["epoch"] as? Int,
+              epoch == lastPushedEpoch else { return nil }
+        return text
+    }
+
+    /// Swift принял текст, который webview УЖЕ отображает (fetchDoc) — эхо-push через
+    /// updateNSView не нужен (иначе лишний setState со сбросом курсора).
+    func noteWebTextAdopted(_ text: String) { jsText = text }
 
     /// Начало переключения файла: сразу поднимаем поколение, чтобы «хвостовые» doc-сообщения
     /// прошлого файла отбрасывались ещё до того, как загрузится новый документ (анти-перезапись).

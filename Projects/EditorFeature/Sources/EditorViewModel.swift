@@ -180,8 +180,19 @@ public final class EditorViewModel {
         return true
     }
 
+    /// Принять текущий JS-буфер webview перед переключением файла (RPC-вытягивание хвоста
+    /// дебаунса ~250мс-1с, который иначе гибнет в setState нового документа). Только вне
+    /// переключения и при загруженном файле; на диск ляжет следом — flushSave внутри switchTo.
+    public func adoptWebText(_ latest: String) {
+        guard !isSwitching, loadedURL != nil, latest != text else { return }
+        text = latest
+    }
+
     /// Переключение на другой файл БЕЗ пересоздания редактора (живой webview) — нет лага открытия.
     public func switchTo(_ url: URL?) async {
+        let carriedText = text
+        let carriedSnapshot = diskSnapshot
+        let previousURL = loadedURL
         flushSave()
         if let old = fileURL { inlineStash[old.path] = snapshotInline() }
         let token = UUID()
@@ -195,6 +206,16 @@ public final class EditorViewModel {
             diskSnapshot = doc?.text ?? ""
             loadedURL = url
             modifiedAt = doc?.modifiedAt
+            /// Rename/move-страховка: файл переименовали (move) под несохранёнными правками —
+            /// flushSave выше молча пропустил запись (старого пути больше нет), а диск нового
+            /// пути равен последнему известному диску старого. Переносим правки на новый путь.
+            if let previousURL, previousURL != url,
+               carriedText != carriedSnapshot,
+               doc?.text == carriedSnapshot,
+               !FileManager.default.fileExists(atPath: previousURL.path) {
+                text = carriedText
+                flushSave()
+            }
             applyInline(inlineStash[url.path] ?? InlineState())
             if tasks?.isReadyUnread(.inline(path: url.path)) == true { tasks?.markRead(.inline(path: url.path)) }
         } else {

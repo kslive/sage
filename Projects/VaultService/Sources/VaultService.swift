@@ -58,14 +58,13 @@ public actor VaultService: VaultServicing {
     }
 
     public func createNote(named name: String, in folder: URL) async throws -> URL {
-        try await createNote(named: name, content: "# \(name)\n\n", in: folder)
+        try await createNote(named: name, content: "", in: folder)
     }
 
     public func createNote(named name: String, content: String, in folder: URL) async throws -> URL {
         let safeBase = name.withoutMDExtension.replacingOccurrences(of: "/", with: "-")
         let target = uniquePath(base: safeBase, ext: "md", in: folder)
-        let body = content.isEmpty ? "# \(safeBase)\n\n" : content
-        try body.write(to: target, atomically: true, encoding: .utf8)
+        try content.write(to: target, atomically: true, encoding: .utf8)
         return target
     }
 

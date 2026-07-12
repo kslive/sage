@@ -41,10 +41,10 @@ final class VaultServiceTests: XCTestCase {
         XCTAssertFalse(url.lastPathComponent.contains("/"))
     }
 
-    func testCreateNoteDefaultHeaderWhenEmpty() async throws {
+    /// Новая заметка создаётся ПУСТОЙ (без шаблона «# Имя» — пользователь начинает с чистого листа).
+    func testCreateNoteEmptyByDefault() async throws {
         let url = try await vault.createNote(named: "Empty", in: temp.root)
-        let text = try String(contentsOf: url, encoding: .utf8)
-        XCTAssertTrue(text.contains("Empty"))
+        XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), "")
     }
 
     // MARK: - createFolder

@@ -671,6 +671,9 @@ struct MainShellView: View {
     }
 
     private func renameItem(_ node: FileNode, to newName: String) {
+        /// Флаш ДО move: несохранённый текст ложится на СТАРЫЙ путь, пока тот существует, —
+        /// rename перенесёт файл уже с текстом (иначе flushSave по исчезнувшему пути молчит).
+        NotificationCenter.default.post(name: .sageFlushAll, object: nil)
         Task {
             if let newURL = try? await composition.vault.rename(at: node.url, to: newName) {
                 if router.selectedFile == node.url { router.selectedFile = newURL }

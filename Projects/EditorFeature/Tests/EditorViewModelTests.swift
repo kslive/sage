@@ -169,6 +169,105 @@ final class EditorViewModelTests: XCTestCase {
         XCTAssertFalse(vm.gitSyncEnded())
     }
 
+    // MARK: - adoptWebText (вытягивание невысланного JS-буфера при переключении, Ит.66)
+
+    func testAdoptWebTextAppliesLatestBuffer() async throws {
+        let url = temp.write("note.md", "v1")
+        vault.docs[url.path] = NoteDocument(url: url, text: "v1", modifiedAt: Date())
+        let vm = makeVM(fileURL: url)
+        await vm.load()
+        vm.adoptWebText("v1 плюс невысланный хвост")
+        XCTAssertEqual(vm.text, "v1 плюс невысланный хвост")
+        vm.flushSave()
+        XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), "v1 плюс невысланный хвост")
+    }
+
+    /// Без загруженного файла adopt — no-op (буфер не к чему привязать).
+    func testAdoptWebTextIgnoredWithoutFile() {
+        let vm = makeVM()
+        vm.adoptWebText("мусор")
+        XCTAssertEqual(vm.text, "")
+    }
+
+    /// Во время переключения adopt игнорируется (текст мог быть от ЧУЖОГО файла).
+    func testAdoptWebTextIgnoredWhileSwitching() async throws {
+        let a = temp.write("a.md", "AAA")
+        let b = temp.write("b.md", "BBB")
+        vault.docs[a.path] = NoteDocument(url: a, text: "AAA", modifiedAt: Date())
+        vault.docs[b.path] = NoteDocument(url: b, text: "BBB", modifiedAt: Date())
+        let vm = makeVM(fileURL: a)
+        await vm.load()
+        vault.readDelayNanos = 150_000_000
+        let s = Task { await vm.switchTo(b) }
+        try await Task.sleep(nanoseconds: 30_000_000)
+        vm.adoptWebText("не должен применяться")
+        _ = await s.value
+        XCTAssertEqual(vm.text, "BBB")
+        XCTAssertEqual(try String(contentsOf: b, encoding: .utf8), "BBB")
+    }
+
+    // MARK: - Rename-carryover (переименование под несохранёнными правками, Ит.66)
+
+    /// Rename = move: старый путь исчез → flushSave молча пропускал запись, switchTo затирал
+    /// текст пустым шаблоном с нового пути. Carryover переносит правки на новый путь.
+    func testRenameCarryoverPreservesUnsavedText() async throws {
+        let a = temp.write("Заметка.md", "# Заметка\n\n")
+        vault.docs[a.path] = NoteDocument(url: a, text: "# Заметка\n\n", modifiedAt: Date())
+        let vm = makeVM(fileURL: a)
+        await vm.load()
+        vm.onEditorText("# Заметка\n\nтело, набранное до переименования")
+        let b = a.deletingLastPathComponent().appendingPathComponent("Идеи.md")
+        try FileManager.default.moveItem(at: a, to: b)
+        vault.docs[b.path] = NoteDocument(url: b, text: "# Заметка\n\n", modifiedAt: Date())
+        await vm.switchTo(b)
+        XCTAssertEqual(vm.text, "# Заметка\n\nтело, набранное до переименования")
+        XCTAssertEqual(try String(contentsOf: b, encoding: .utf8), "# Заметка\n\nтело, набранное до переименования")
+    }
+
+    /// Без несохранённых правок carryover не активируется — просто открываем дисковую версию.
+    func testRenameCarryoverSkippedWhenNoEdits() async throws {
+        let a = temp.write("Заметка.md", "# Заметка\n\n")
+        vault.docs[a.path] = NoteDocument(url: a, text: "# Заметка\n\n", modifiedAt: Date())
+        let vm = makeVM(fileURL: a)
+        await vm.load()
+        let b = a.deletingLastPathComponent().appendingPathComponent("Идеи.md")
+        try FileManager.default.moveItem(at: a, to: b)
+        vault.docs[b.path] = NoteDocument(url: b, text: "# Заметка\n\n", modifiedAt: Date())
+        await vm.switchTo(b)
+        XCTAssertEqual(vm.text, "# Заметка\n\n")
+    }
+
+    /// Старый файл существует (обычное переключение) → правки уходят flushSave'ом в СТАРЫЙ файл,
+    /// carryover не активируется, даже если контент нового совпал со снапшотом старого.
+    func testCarryoverSkippedWhenOldFileStillExists() async throws {
+        let a = temp.write("a.md", "# Заметка\n\n")
+        let b = temp.write("b.md", "# Заметка\n\n")
+        vault.docs[a.path] = NoteDocument(url: a, text: "# Заметка\n\n", modifiedAt: Date())
+        vault.docs[b.path] = NoteDocument(url: b, text: "# Заметка\n\n", modifiedAt: Date())
+        let vm = makeVM(fileURL: a)
+        await vm.load()
+        vm.onEditorText("# Заметка\n\nправки для a")
+        await vm.switchTo(b)
+        XCTAssertEqual(vm.text, "# Заметка\n\n")
+        XCTAssertEqual(try String(contentsOf: a, encoding: .utf8), "# Заметка\n\nправки для a")
+        XCTAssertEqual(try String(contentsOf: b, encoding: .utf8), "# Заметка\n\n")
+    }
+
+    /// Старый путь исчез, но контент нового ДРУГОЙ → это не rename, дисковая версия побеждает.
+    func testCarryoverSkippedWhenNewContentDiffers() async throws {
+        let a = temp.write("a.md", "# A\n\n")
+        vault.docs[a.path] = NoteDocument(url: a, text: "# A\n\n", modifiedAt: Date())
+        let vm = makeVM(fileURL: a)
+        await vm.load()
+        vm.onEditorText("# A\n\nнесохранённое")
+        try FileManager.default.removeItem(at: a)
+        let b = temp.write("b.md", "совсем другой контент")
+        vault.docs[b.path] = NoteDocument(url: b, text: "совсем другой контент", modifiedAt: Date())
+        await vm.switchTo(b)
+        XCTAssertEqual(vm.text, "совсем другой контент")
+        XCTAssertEqual(try String(contentsOf: b, encoding: .utf8), "совсем другой контент")
+    }
+
     // MARK: - inlineIntent (детерминированная классификация намерения инлайна)
 
     func testInlineIntentEditVerbs() {

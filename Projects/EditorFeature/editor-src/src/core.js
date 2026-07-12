@@ -609,3 +609,19 @@ export const baseTheme = EditorView.theme({
   "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection": { backgroundColor: "var(--acs)" },
   ".cm-line": { lineHeight: "1.7" },
 }, { dark: true });
+
+// Задержка отправки doc в Swift: дебаунс debounce мс, но не позже maxWait от первого
+// несохранённого ввода — иначе непрерывная печать бесконечно откладывала бы отправку,
+// и весь набор жил бы только в webview (терялся при переключении файла/git-коммите).
+export function docSendDelay(now, firstPendingAt, debounce = 250, maxWait = 1000) {
+  if (!firstPendingAt) return debounce;
+  return Math.max(0, Math.min(debounce, firstPendingAt + maxWait - now));
+}
+
+// Двойной пробел после слова → «. » (системное поведение macOS; в WKWebView само не работает).
+// two — два символа перед курсором ДО ввода второго пробела: [словесный символ][пробел] → замена.
+// После точки/пробела/пунктуации не срабатывает (третий пробел остаётся обычным пробелом).
+export function autoPeriodBefore(two) {
+  return typeof two === "string" && two.length === 2 && two[1] === " " &&
+    /[\p{L}\p{N})\]»"']/u.test(two[0]);
+}

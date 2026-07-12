@@ -22,6 +22,34 @@ final class WebEditorTests: XCTestCase {
         XCTAssertEqual(ctrl.epoch, 1)               // поколение поднялось до загрузки нового документа
     }
 
+    // MARK: - lastPushedEpoch (валидация fetchDoc: анти-stale-fetch)
+
+    /// setDoc двигает lastPushedEpoch (JS-эпоха после push равна ей), beginSwitch — НЕТ:
+    /// между beginSwitch и следующим setDoc JS отстаёт ровно на эту разницу.
+    func testSetDocUpdatesLastPushedEpochButBeginSwitchDoesNot() {
+        let ctrl = WebEditorController()
+        ctrl.setDoc("a")
+        XCTAssertEqual(ctrl.lastPushedEpoch, ctrl.epoch)
+        ctrl.beginSwitch()
+        XCTAssertEqual(ctrl.epoch, 2)
+        XCTAssertEqual(ctrl.lastPushedEpoch, 1)      // последний реальный push — эпоха 1
+        ctrl.setDoc("b")
+        XCTAssertEqual(ctrl.lastPushedEpoch, ctrl.epoch)
+    }
+
+    func testAcceptFetchedMatchingEpochReturnsText() {
+        let res: [String: Any] = ["text": "буфер", "epoch": 3]
+        XCTAssertEqual(WebEditorController.acceptFetched(res, lastPushedEpoch: 3), "буфер")
+    }
+
+    /// Ответ с отставшей/чужой эпохой — буфер ЧУЖОГО документа (stale-fetch) → отброшен.
+    func testAcceptFetchedStaleOrGarbageReturnsNil() {
+        XCTAssertNil(WebEditorController.acceptFetched(["text": "x", "epoch": 2], lastPushedEpoch: 3))
+        XCTAssertNil(WebEditorController.acceptFetched(["text": "x"], lastPushedEpoch: 0))
+        XCTAssertNil(WebEditorController.acceptFetched(NSNull(), lastPushedEpoch: 0))
+        XCTAssertNil(WebEditorController.acceptFetched(nil, lastPushedEpoch: 0))
+    }
+
     // MARK: - Coordinator.docAction (чистое решение по doc-сообщению)
 
     func testDocActionMatchingEpochApplies() {
