@@ -66,6 +66,7 @@ struct SageApp: App {
                 .environment(updaterVM)
                 .frame(minWidth: 920, minHeight: 620)
                 .sageTheme(theme)
+                .onOpenURL { url in handleDeepLink(url) }
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: DesignSystem.windowSize.width, height: DesignSystem.windowSize.height)
@@ -90,6 +91,18 @@ struct SageApp: App {
 
     private func activateApp() {
         NSApplication.shared.activate(ignoringOtherApps: true)
+    }
+
+    /// Диплинк `sage://open?path=<файл>` — открыть заметку в редакторе (интеграция
+    /// с внешними приложениями, например Ember). Открываем только существующий файл.
+    private func handleDeepLink(_ url: URL) {
+        guard url.scheme == "sage", (url.host ?? "") == "open",
+              let comps = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let path = comps.queryItems?.first(where: { $0.name == "path" })?.value,
+              FileManager.default.fileExists(atPath: path) else { return }
+        router.selectedFile = URL(fileURLWithPath: path)
+        router.go(.editor)
+        activateApp()
     }
 
     /// Выполнить действие из трея и закрыть дропдаун MenuBarExtra.

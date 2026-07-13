@@ -140,6 +140,12 @@ let app = Target.target(
         "CFBundleDisplayName": "Sage",
         "CFBundleShortVersionString": "$(MARKETING_VERSION)",
         "CFBundleVersion": "$(CURRENT_PROJECT_VERSION)",
+        "CFBundleURLTypes": [
+            [
+                "CFBundleURLName": "com.sage.app",
+                "CFBundleURLSchemes": ["sage"],
+            ],
+        ],
         "LSMinimumSystemVersion": "15.0",
         "LSApplicationCategoryType": "public.app-category.productivity",
         "NSHumanReadableCopyright": "Sage — локальный ИИ-редактор заметок.",
