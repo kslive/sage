@@ -172,7 +172,8 @@ struct MainShellView: View {
         }
         .onChange(of: settings.vaultPath) { _, _ in
             startWatching()
-            router.selectedFile = nil
+            router.selectedFile = router.pendingExternalOpen
+            router.pendingExternalOpen = nil
             router.pendingChatContext = nil
             router.searchOpen = false
             pendingFileDelete = nil

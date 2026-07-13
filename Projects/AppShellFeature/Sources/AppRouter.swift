@@ -29,6 +29,11 @@ public final class AppRouter {
     public var pendingChatPrompt: String?
     public var chatPromptNonce = 0
 
+    /// Файл, который надо открыть ПОСЛЕ смены хранилища (диплинк на заметку вне
+    /// текущего пространства): смена vaultPath сбрасывает selectedFile, поэтому
+    /// открытие откладывается до обработчика onChange(vaultPath) в RootView.
+    public var pendingExternalOpen: URL?
+
     public init() {}
 
     public func go(_ view: AppView) {
