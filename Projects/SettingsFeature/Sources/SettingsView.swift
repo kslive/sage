@@ -11,6 +11,19 @@ public struct SettingsView: View {
     @AppStorage("sage.settingsNavWidth") private var navWidthRaw: Double = 210
     private let onChangeVault: () -> Void
 
+    /// Модель, ожидающая подтверждения удаления (алерт).
+    private struct PendingModelDelete: Identifiable {
+        let id: String
+        let name: String
+        let perform: () -> Void
+    }
+    @State private var pendingModelDelete: PendingModelDelete?
+
+    @State private var deepseekDraft = ""
+    @State private var deepseekModels: [String] = []
+    @State private var deepseekChecking = false
+    @State private var deepseekError: String?
+
     @Environment(\.palette) private var palette
     @Environment(LocaleManager.self) private var locale
     @Environment(ThemeManager.self) private var theme
@@ -44,6 +57,17 @@ public struct SettingsView: View {
         .task { await vm.loadStates() }
         .onAppear { vm.strings = s }
         .onChange(of: locale.language) { _, _ in vm.strings = s }
+        .alert(
+            s.common.delete,
+            isPresented: Binding(get: { pendingModelDelete != nil }, set: { if !$0 { pendingModelDelete = nil } }),
+            presenting: pendingModelDelete
+        ) { pending in
+            Button(s.common.delete, role: .destructive) { pending.perform() }
+                .keyboardShortcut(.defaultAction)
+            Button(s.common.cancel, role: .cancel) {}
+        } message: { pending in
+            Text("«\(pending.name)»")
+        }
     }
 
     private var tabNav: some View {
@@ -119,13 +143,19 @@ public struct SettingsView: View {
         return VStack(alignment: .leading, spacing: 0) {
             tabHeader(s.settings.ai, s.settings.aiSub)
             sectionLabel(s.settings.llmSection)
-            VStack(spacing: 8) {
-                ForEach(ModelCatalog.llms) { spec in
-                    modelRow(id: spec.id, emoji: spec.emoji, name: spec.name,
-                             size: Formatting.fileSize(spec.sizeBytes),
-                             active: settings.activeLLMId == spec.id,
-                             onActivate: { vm.activateLLM(spec.id) },
-                             onDownload: { vm.downloadLLM(spec) })
+            VStack(alignment: .leading, spacing: 14) {
+                ForEach(ModelCatalog.groups(), id: \.kind) { group in
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(groupTitle(group.kind)).font(.sage(11, .medium)).foregroundStyle(palette.tx3)
+                        ForEach(group.models) { spec in
+                            modelRow(id: spec.id, emoji: spec.emoji, name: spec.name,
+                                     size: Formatting.fileSize(spec.sizeBytes),
+                                     active: settings.activeLLMId == spec.id,
+                                     onActivate: { vm.activateLLM(spec.id) },
+                                     onDownload: { vm.downloadLLM(spec) },
+                                     onDelete: { pendingModelDelete = .init(id: spec.id, name: spec.name) { vm.deleteLLM(spec) } })
+                        }
+                    }
                 }
             }
             .padding(.bottom, 24)
@@ -136,13 +166,114 @@ public struct SettingsView: View {
                              size: Formatting.fileSize(spec.sizeBytes),
                              active: settings.activeWhisperId == spec.id,
                              onActivate: { vm.activateWhisper(spec.id) },
-                             onDownload: { vm.downloadWhisper(spec) })
+                             onDownload: { vm.downloadWhisper(spec) },
+                             onDelete: { pendingModelDelete = .init(id: spec.id, name: spec.name) { vm.deleteWhisper(spec) } })
                 }
+            }
+            .padding(.bottom, 24)
+            sectionLabel(s.settings.deepseekSection)
+            deepseekSection
+        }
+        .task { await refreshDeepseekModels() }
+    }
+
+    private func groupTitle(_ kind: ModelCatalog.LLMGroupKind) -> String {
+        switch kind {
+        case .light: s.models.groupLight
+        case .standard: s.models.groupStandard
+        case .max: s.models.groupMax
+        }
+    }
+
+    /// Опциональный облачный путь: ключ — в device-bound шифрованном файле (SecretStore),
+    /// модель выбирается из GET /models ЭТОГО ключа (id не хардкодим). Локальная модель —
+    /// всегда доступный фолбэк при любой ошибке облака.
+    @ViewBuilder private var deepseekSection: some View {
+        @Bindable var settings = settings
+        VStack(alignment: .leading, spacing: 12) {
+            Text(s.settings.deepseekSub).font(.sage(11.5)).foregroundStyle(palette.tx3)
+            if settings.deepseekConnected {
+                HStack(spacing: 10) {
+                    Text("••••••••").font(.system(size: 13, design: .monospaced)).foregroundStyle(palette.tx2)
+                    Text(s.settings.deepseekConnected).font(.sage(12.5)).foregroundStyle(palette.ac)
+                    Spacer()
+                    SageButton(s.settings.deepseekDelete, kind: .secondary) {
+                        settings.deleteDeepseekKey()
+                        deepseekModels = []
+                        deepseekError = nil
+                    }
+                }
+                if !deepseekModels.isEmpty {
+                    HStack(spacing: 10) {
+                        Text(s.settings.deepseekModelLabel).font(.sage(13)).foregroundStyle(palette.tx2)
+                        Picker("", selection: $settings.deepseekModel) {
+                            ForEach(deepseekModels, id: \.self) { Text($0).tag($0) }
+                        }
+                        .labelsHidden()
+                        .frame(maxWidth: 240)
+                        Spacer()
+                    }
+                }
+            } else {
+                HStack(spacing: 10) {
+                    SecureField(s.settings.deepseekPlaceholder, text: $deepseekDraft)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 12.5, design: .monospaced)).foregroundStyle(palette.tx)
+                        .padding(.horizontal, 10).padding(.vertical, 7)
+                        .background(palette.bg1, in: RoundedRectangle(cornerRadius: Radius.sm))
+                        .overlay(RoundedRectangle(cornerRadius: Radius.sm).strokeBorder(palette.bd, lineWidth: 1))
+                        .id(palette.key)
+                    if deepseekChecking {
+                        SageSpinner(size: 14)
+                    } else {
+                        SageButton(s.settings.deepseekCheck, kind: .secondary) { Task { await verifyDeepseekKey() } }
+                            .disabled(deepseekDraft.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                }
+                if let deepseekError {
+                    Text(deepseekError).font(.sage(11.5)).foregroundStyle(palette.error)
+                }
+            }
+        }
+        .padding(14)
+        .background(palette.bg1, in: RoundedRectangle(cornerRadius: Radius.md))
+        .overlay(RoundedRectangle(cornerRadius: Radius.md).strokeBorder(palette.bd, lineWidth: 1))
+    }
+
+    /// Проверка ключа = GET /models: успех → сохранить ключ + список моделей (+дефолтная chat-модель).
+    private func verifyDeepseekKey() async {
+        let key = deepseekDraft.trimmingCharacters(in: .whitespaces)
+        guard !key.isEmpty else { return }
+        deepseekChecking = true
+        deepseekError = nil
+        defer { deepseekChecking = false }
+        do {
+            let models = try await DeepSeekClient.listModels(key: key)
+            settings.setDeepseekKey(key)
+            deepseekModels = models
+            if settings.deepseekModel.isEmpty || !models.contains(settings.deepseekModel) {
+                settings.deepseekModel = models.first(where: { $0.contains("chat") }) ?? models.first ?? ""
+            }
+            deepseekDraft = ""
+        } catch {
+            deepseekError = "\(s.settings.deepseekInvalid): \(error.localizedDescription)"
+        }
+    }
+
+    /// При открытой вкладке с сохранённым ключом — обновить список моделей (тихо, без ошибок в UI).
+    private func refreshDeepseekModels() async {
+        guard let key = SettingsStore.deepseekKey() else { return }
+        if let models = try? await DeepSeekClient.listModels(key: key) {
+            deepseekModels = models
+            if settings.deepseekModel.isEmpty || !deepseekModels.contains(settings.deepseekModel) {
+                settings.deepseekModel = models.first(where: { $0.contains("chat") }) ?? models.first ?? ""
             }
         }
     }
 
-    private func modelRow(id: String, emoji: String, name: String, size: String, active: Bool, onActivate: @escaping () -> Void, onDownload: @escaping () -> Void) -> some View {
+    private func modelRow(id: String, emoji: String, name: String, size: String, active: Bool,
+                          onActivate: @escaping () -> Void, onDownload: @escaping () -> Void,
+                          onDelete: (() -> Void)? = nil) -> some View {
         let state = vm.state(id)
         return VStack(spacing: 0) {
             HStack(spacing: 12) {
@@ -156,6 +287,18 @@ public struct SettingsView: View {
                 }
                 Spacer()
                 trailingControl(state: state, active: active, onActivate: onActivate, onDownload: onDownload)
+                if state.isInstalled, let onDelete {
+                    Button(action: onDelete) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 12))
+                            .foregroundStyle(palette.tx3)
+                            .frame(width: 26, height: 26)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .hoverHighlight(palette.bgh, radius: Radius.xs)
+                    .help(s.common.delete)
+                }
             }
             if case let .downloading(progress) = state {
                 LinearProgress(fraction: progress.fraction).padding(.top, 10)

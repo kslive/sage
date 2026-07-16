@@ -15,6 +15,13 @@ public final class UpdaterViewModel {
     /// Релиз, который сейчас качаем/готов — для подписи «Загрузка X…» и кнопки «Перезапустить».
     public private(set) var pendingRelease: UpdateRelease?
 
+    /// Анонс «Что нового» после обновления (нотсы ТЕКУЩЕЙ версии с GitHub) — показывается один раз.
+    public struct WhatsNew: Equatable {
+        public let version: String
+        public let body: String
+    }
+    public private(set) var whatsNew: WhatsNew?
+
     private let updater: UpdateServicing
     private let settings: SettingsStore
     private let locale: LocaleManager
@@ -38,6 +45,26 @@ public final class UpdaterViewModel {
     private var s: Strings { locale.strings }
     public var currentVersion: String { CoreKit.appVersion }
     public var lastCheck: Date? { settings.lastUpdateCheck }
+
+    /// Загрузить анонс «Что нового» — один раз на версию. Пустые/отсутствующие нотсы помечаются
+    /// без показа; сетевая ошибка НЕ помечает (окно покажется при следующем онлайн-запуске).
+    public func maybeLoadWhatsNew() async {
+        let current = CoreKit.appVersion
+        guard settings.whatsNewShownVersion != current else { return }
+        do {
+            guard let body = try await updater.releaseNotes(repo: CoreKit.updatesRepo, version: current),
+                  !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                settings.whatsNewShownVersion = current
+                return
+            }
+            whatsNew = WhatsNew(version: current, body: body)
+        } catch {}
+    }
+
+    public func dismissWhatsNew() {
+        settings.whatsNewShownVersion = CoreKit.appVersion
+        whatsNew = nil
+    }
 
     /// Фоновая проверка (старт/фокус/таймер) — троттлится; качает в фоне только при autoUpdate.
     public func checkInBackground() {

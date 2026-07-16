@@ -74,7 +74,8 @@ struct SageApp: App {
 
         MenuBarExtra("Sage", systemImage: "sparkle") {
             TrayMenuView(
-                activeModelName: settings.activeLLM?.name ?? "—",
+                activeModelName: settings.cloudAIActive ? settings.deepseekModel : (settings.activeLLM?.name ?? "—"),
+                cloudAI: settings.cloudAIActive,
                 ready: settings.onboardingComplete,
                 onNewChat: { trayAction { router.openChat(context: .vault) } },
                 onSearch: { trayAction { router.searchOpen = true } },
@@ -93,10 +94,13 @@ struct SageApp: App {
         NSApplication.shared.activate(ignoringOtherApps: true)
     }
 
-    /// Диплинк `sage://open?path=<файл>` — открыть заметку в редакторе (интеграция
-    /// с внешними приложениями, например Ember). Открываем только существующий файл.
-    /// Файл ВНЕ текущего пространства — переключаем пространство на его папку
-    /// (сброс selectedFile в onChange(vaultPath) обходится через pendingExternalOpen).
+    /// Диплинк `sage://open?path=<файл>[&root=<корень>]` — открыть заметку в
+    /// редакторе (интеграция с внешними приложениями, например Ember). Открываем
+    /// только существующий файл. Файл ВНЕ текущего пространства — переключаем
+    /// пространство: на `root`, если он передан, существует и содержит файл
+    /// (Ember раскладывает экспорт по подпапкам дат — без `root` пространством
+    /// стала бы голая папка даты вместо волта), иначе на папку файла. Сброс
+    /// selectedFile в onChange(vaultPath) обходится через pendingExternalOpen.
     private func handleDeepLink(_ url: URL) {
         guard url.scheme == "sage", (url.host ?? "") == "open",
               let comps = URLComponents(url: url, resolvingAgainstBaseURL: false),
@@ -110,9 +114,24 @@ struct SageApp: App {
             router.go(.editor)
         } else {
             router.pendingExternalOpen = fileURL
-            settings.setVault(url: fileURL.deletingLastPathComponent())
+            settings.setVault(url: externalVaultRoot(for: fileURL, comps: comps))
         }
         activateApp()
+    }
+
+    /// Корень пространства для внешнего файла: валидный `root`-параметр,
+    /// содержащий файл, побеждает; фолбэк — родительская папка файла.
+    private func externalVaultRoot(for fileURL: URL, comps: URLComponents) -> URL {
+        guard let rootParam = comps.queryItems?.first(where: { $0.name == "root" })?.value else {
+            return fileURL.deletingLastPathComponent()
+        }
+        let rootURL = URL(fileURLWithPath: rootParam).standardizedFileURL
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: rootURL.path, isDirectory: &isDir), isDir.boolValue,
+              fileURL.path.hasPrefix(rootURL.path + "/") else {
+            return fileURL.deletingLastPathComponent()
+        }
+        return rootURL
     }
 
     /// Выполнить действие из трея и закрыть дропдаун MenuBarExtra.

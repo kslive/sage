@@ -6,6 +6,7 @@ import SwiftUI
 /// Содержимое трей-дропдауна (MenuBarExtra) — статус модели и быстрые действия.
 public struct TrayMenuView: View {
     private let activeModelName: String
+    private let cloudAI: Bool
     private let ready: Bool
     private let onNewChat: () -> Void
     private let onSearch: () -> Void
@@ -16,12 +17,13 @@ public struct TrayMenuView: View {
     @Environment(LocaleManager.self) private var locale
 
     public init(
-        activeModelName: String, ready: Bool = true,
+        activeModelName: String, cloudAI: Bool = false, ready: Bool = true,
         onNewChat: @escaping () -> Void,
         onSearch: @escaping () -> Void, onSettings: @escaping () -> Void,
         onQuit: @escaping () -> Void
     ) {
         self.activeModelName = activeModelName
+        self.cloudAI = cloudAI
         self.ready = ready
         self.onNewChat = onNewChat
         self.onSearch = onSearch
@@ -39,7 +41,7 @@ public struct TrayMenuView: View {
                     Text("Sage").font(.sage(13, .semibold)).foregroundStyle(palette.tx)
                     HStack(spacing: 5) {
                         StatusDot(size: 6)
-                        Text("\(activeModelName) · \(s.tray.statusRunning)")
+                        Text("\(activeModelName) · \(cloudAI ? s.app.cloudRunning : s.tray.statusRunning)")
                             .font(.sage(11.5)).foregroundStyle(palette.tx2)
                     }
                 }

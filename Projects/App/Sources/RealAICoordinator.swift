@@ -16,7 +16,8 @@ struct RealAICoordinator: AICoordinating {
     let vault: VaultServicing
 
     func isReady() async -> Bool {
-        await models.localURLForLLM(settings.activeLLMId) != nil
+        if SettingsStore.deepseekKey() != nil, !settings.deepseekModel.isEmpty { return true }
+        return await models.localURLForLLM(settings.activeLLMId) != nil
     }
 
     private func ensureLoaded() async throws {
@@ -25,6 +26,45 @@ struct RealAICoordinator: AICoordinating {
             throw InferenceError.notLoaded
         }
         try await inference.load(modelURL: url, template: spec.template, contextSize: spec.contextSize)
+    }
+
+    /// Единая точка генерации: облако DeepSeek (ключ + выбранная модель) с фолбэком на локальную
+    /// MLX-модель при ЛЮБОЙ ошибке облака; без ключа — сразу локальная. Облачный путь не грузит
+    /// локальную модель в память (отмена не считается ошибкой и в фолбэк не уходит).
+    /// `unloadAfter` — немедленная выгрузка локальной модели по завершении (одиночная работа,
+    /// например инлайн-действие). В агентном цикле чата НЕ ставить — выгрузка между шагами
+    /// заставила бы каждый шаг ждать перезагрузку; чат выгружает один раз в конце цикла.
+    private func generate(_ request: InferenceRequest, unloadAfter: Bool = false) -> AsyncThrowingStream<String, Error> {
+        let cloudKey = SettingsStore.deepseekKey()
+        let cloudModel = settings.deepseekModel
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                defer { if unloadAfter { Task { await inference.unload() } } }
+                if let cloudKey, !cloudModel.isEmpty {
+                    do {
+                        let text = try await DeepSeekClient.chat(
+                            key: cloudKey, model: cloudModel,
+                            system: request.system, user: request.user,
+                            temperature: request.temperature)
+                        if settings.cloudAIDown { await MainActor.run { settings.cloudAIDown = false } }
+                        continuation.yield(text)
+                        continuation.finish()
+                        return
+                    } catch is CancellationError {
+                        continuation.finish(throwing: CancellationError())
+                        return
+                    } catch {
+                        await MainActor.run { settings.cloudAIDown = true }
+                    }
+                }
+                do {
+                    try await ensureLoaded()
+                    for try await token in inference.stream(request) { continuation.yield(token) }
+                    continuation.finish()
+                } catch { continuation.finish(throwing: error) }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
     }
 
     var languageName: String { locale.language.englishName }
@@ -93,16 +133,7 @@ struct RealAICoordinator: AICoordinating {
             system = "You are Sage, a writing assistant inside a Markdown editor. Answer the user's question about the text below — do NOT rewrite or output the text itself. Respond in \(languageName).\n\nTEXT:\n\(context.prefix(6000))"
         }
         let request = InferenceRequest(system: system, user: instruction, temperature: settings.temperature)
-        return AsyncThrowingStream { continuation in
-            let task = Task {
-                do {
-                    try await ensureLoaded()
-                    for try await token in inference.stream(request) { continuation.yield(token) }
-                    continuation.finish()
-                } catch { continuation.finish(throwing: error) }
-            }
-            continuation.onTermination = { _ in task.cancel() }
-        }
+        return generate(request, unloadAfter: true)
     }
 
     // MARK: - Чат (агент с инструментами)
@@ -111,7 +142,6 @@ struct RealAICoordinator: AICoordinating {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    try await ensureLoaded()
                     let root = settings.resolveVaultURL()
                     var tree = await rootTree(root)
                     let lastUser = history.last(where: { $0.role == .user })?.text ?? ""
@@ -119,7 +149,7 @@ struct RealAICoordinator: AICoordinating {
                     if isSmallTalk(lastUser) {
                         let sys = "You are Sage, a friendly local assistant for the user's Markdown notes. Reply briefly and warmly in \(languageName). Plain text only — never use tools or JSON."
                         var any = false
-                        for try await token in inference.stream(InferenceRequest(system: sys, user: lastUser, temperature: settings.temperature)) {
+                        for try await token in generate(InferenceRequest(system: sys, user: lastUser, temperature: settings.temperature)) {
                             if Task.isCancelled { break }
                             any = true
                             continuation.yield(.token(token))
@@ -131,6 +161,7 @@ struct RealAICoordinator: AICoordinating {
                                 "你好！需要我帮你处理笔记吗？")))
                         }
                         continuation.finish()
+                        await inference.unload()
                         return
                     }
 
@@ -169,7 +200,7 @@ struct RealAICoordinator: AICoordinating {
                         let system = agentSystem(root: root, context: context, tree: tree, focus: stepFocus, prior: prior, scratch: transcript)
                         let request = InferenceRequest(system: system, user: lastUser, temperature: min(settings.temperature, 0.3))
                         var buffer = ""
-                        for try await token in inference.stream(request) { buffer += token }
+                        for try await token in generate(request) { buffer += token }
 
                         if let tool = AITool.parse(from: buffer) {
                             let sig = toolSignature(tool)
@@ -197,7 +228,7 @@ struct RealAICoordinator: AICoordinating {
                         } else {
                             let wrapSystem = "You are Sage. Answer the user briefly in \(languageName). Plain text only, no JSON."
                             var any = false
-                            for try await token in inference.stream(InferenceRequest(system: wrapSystem, user: lastUser, temperature: settings.temperature)) {
+                            for try await token in generate(InferenceRequest(system: wrapSystem, user: lastUser, temperature: settings.temperature)) {
                                 any = true; continuation.yield(.token(token))
                             }
                             if !any {
@@ -212,6 +243,9 @@ struct RealAICoordinator: AICoordinating {
                 } catch {
                     continuation.finish(throwing: error)
                 }
+                /// Работа чата завершена (весь агентный цикл/ответ) — немедленно вернуть память
+                /// модели. Контекст беседы живёт в истории сообщений (сторе), не в модели.
+                await inference.unload()
             }
             continuation.onTermination = { _ in task.cancel() }
         }

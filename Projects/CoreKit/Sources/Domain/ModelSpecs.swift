@@ -24,18 +24,17 @@ public enum PromptTemplate: String, Codable, Sendable {
 }
 
 /// Производные лимиты инференса от объявленного моделью окна контекста (чистая логика — тест).
-/// Контекст уважаем как есть (флор 2048); KV-кэш держит весь контекст (kvBits:8 квантование);
-/// бюджет промпта = контекст − место под генерацию − запас.
+/// Контекст уважаем как есть (флор 2048). Бюджет промпта КАПАЕТСЯ на 12k токенов для ЛЮБОЙ
+/// модели: без капа длинный промпт раздувал KV-кэш (prefill накапливается неквантованным)
+/// на гигабайты и минуты 100% GPU — Mac лагал целиком.
 public struct InferenceLimits: Equatable, Sendable {
     public let context: Int
-    public let maxKV: Int
     public let promptBudget: Int
 
-    public init(contextSize: Int, maxGenerationTokens: Int = 1024, margin: Int = 512) {
+    public init(contextSize: Int, maxGenerationTokens: Int = 1024, margin: Int = 1200) {
         let ctx = max(2048, contextSize)
         self.context = ctx
-        self.maxKV = ctx
-        self.promptBudget = max(512, ctx - maxGenerationTokens - margin)
+        self.promptBudget = max(2000, min(ctx - maxGenerationTokens - margin, 12000))
     }
 }
 
@@ -100,21 +99,40 @@ private func url(_ string: String) -> URL { URL(string: string)! }
 public enum ModelCatalog {
     private static let hfWhisper = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/"
 
+    /// Отсортировано по размеру (меньшие первыми). Существующие записи сохраняют свои репо —
+    /// скачанная модель не превращается в ре-даунлод после обновления; DWQ/Instruct-обновления
+    /// идут НОВЫМИ карточками (instruct-веса + дистиллированная DWQ-квантизация — ощутимо ближе
+    /// к fp16-учителю при той же памяти и скорости).
     public static let llms: [LLMModelSpec] = [
         LLMModelSpec(
-            id: "qwen3-8b", name: "Qwen3 8B", emoji: "🦉",
-            repoId: "mlx-community/Qwen3-8B-4bit",
-            sizeBytes: mb(4700), contextSize: 12288, template: .chatML, recommended: true
-        ),
-        LLMModelSpec(
-            id: "qwen3-4b", name: "Qwen3 4B", emoji: "🧠",
-            repoId: "mlx-community/Qwen3-4B-4bit",
-            sizeBytes: mb(2400), contextSize: 24576, template: .chatML
+            id: "qwen3-1.7b-dwq", name: "Qwen3 1.7B DWQ", emoji: "⚡️",
+            repoId: "mlx-community/Qwen3-1.7B-4bit-DWQ",
+            sizeBytes: mb(1000), contextSize: 40960, template: .chatML
         ),
         LLMModelSpec(
             id: "qwen3-1.7b", name: "Qwen3 1.7B", emoji: "⚡️",
             repoId: "mlx-community/Qwen3-1.7B-4bit",
-            sizeBytes: mb(1050), contextSize: 32768, template: .chatML
+            sizeBytes: mb(1050), contextSize: 40960, template: .chatML
+        ),
+        LLMModelSpec(
+            id: "qwen3-4b-2507", name: "Qwen3 4B Instruct", emoji: "🧠",
+            repoId: "mlx-community/Qwen3-4B-Instruct-2507-4bit-DWQ-2510",
+            sizeBytes: mb(2300), contextSize: 40960, template: .chatML, recommended: true
+        ),
+        LLMModelSpec(
+            id: "qwen3-4b", name: "Qwen3 4B", emoji: "🧠",
+            repoId: "mlx-community/Qwen3-4B-4bit",
+            sizeBytes: mb(2400), contextSize: 40960, template: .chatML
+        ),
+        LLMModelSpec(
+            id: "qwen3-8b-dwq", name: "Qwen3 8B DWQ", emoji: "🦉",
+            repoId: "mlx-community/Qwen3-8B-4bit-DWQ",
+            sizeBytes: mb(4650), contextSize: 40960, template: .chatML
+        ),
+        LLMModelSpec(
+            id: "qwen3-8b", name: "Qwen3 8B", emoji: "🦉",
+            repoId: "mlx-community/Qwen3-8B-4bit",
+            sizeBytes: mb(4700), contextSize: 40960, template: .chatML
         ),
     ]
 
@@ -133,8 +151,20 @@ public enum ModelCatalog {
                          sizeBytes: mb(1549)),
     ]
 
+    /// Класс размера для группировки карточек в UI. Каждая модель каталога обязана попасть
+    /// РОВНО в одну группу (закреплено тестом) — иначе карточка молча исчезнет из списков.
+    public enum LLMGroupKind: String, CaseIterable, Sendable { case light, standard, max }
+
+    public static func groups() -> [(kind: LLMGroupKind, models: [LLMModelSpec])] {
+        [
+            (.light, llms.filter { $0.id.hasPrefix("qwen3-1.7b") }),
+            (.standard, llms.filter { $0.id.hasPrefix("qwen3-4b") }),
+            (.max, llms.filter { $0.id.hasPrefix("qwen3-8b") }),
+        ]
+    }
+
     public static func llm(id: String) -> LLMModelSpec? { llms.first { $0.id == id } }
     public static func whisper(id: String) -> WhisperModelSpec? { whispers.first { $0.id == id } }
-    public static let defaultLLM = "qwen3-8b"
+    public static let defaultLLM = "qwen3-4b-2507"
     public static let defaultWhisper = "base"
 }

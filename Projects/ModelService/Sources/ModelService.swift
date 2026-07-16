@@ -178,6 +178,21 @@ public final class ModelService: NSObject, ModelManaging, URLSessionDownloadDele
         }
     }
 
+    public func deleteLLM(_ id: String) async {
+        guard let spec = ModelCatalog.llm(id: id) else { return }
+        llmLock.lock(); let downloading = llmTasks[id] != nil; llmLock.unlock()
+        guard !downloading else { return }
+        try? FileManager.default.removeItem(at: ModelStorage.llmModelDirectory(repoId: spec.repoId))
+    }
+
+    public func deleteWhisper(_ id: String) async {
+        guard let spec = ModelCatalog.whisper(id: id) else { return }
+        lock.lock(); let downloading = taskByModel[id] != nil; lock.unlock()
+        guard !downloading else { return }
+        try? FileManager.default.removeItem(
+            at: ModelStorage.whisperDirectory().appendingPathComponent(spec.fileName))
+    }
+
     public func downloadWhisper(_ spec: WhisperModelSpec) -> AsyncStream<DownloadState> {
         makeStream(
             modelID: spec.id, url: spec.downloadURL,

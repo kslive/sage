@@ -39,6 +39,16 @@ public final class SettingsStore {
     public var pendingUpdateVersion: String? { didSet { d.set(pendingUpdateVersion, forKey: SettingsStore.pendingVersionKey) } }
     /// Путь к распакованному `.app` подготовленного обновления (staging) — применяется при выходе.
     public var pendingUpdatePath: String? { didSet { d.set(pendingUpdatePath, forKey: SettingsStore.pendingPathKey) } }
+    /// Id модели DeepSeek, выбранной из GET /models ЭТОГО ключа ("" = не выбрана → облако выключено).
+    public var deepseekModel: String { didSet { d.set(deepseekModel, forKey: "sage.deepseek.model") } }
+    /// Версия, для которой окно «Что нового» уже показано (анонс — ровно один раз на версию).
+    public var whatsNewShownVersion: String? { didSet { d.set(whatsNewShownVersion, forKey: "sage.whatsnew.version") } }
+    /// Реактивное зеркало наличия DeepSeek-ключа (сам SecretStore-файл не наблюдаем) —
+    /// статус-лейблы («работает локально» ↔ «облако DeepSeek») обновляются мгновенно.
+    public private(set) var deepseekConnected = false
+    /// Последняя облачная генерация упала (сеть/ключ) — ответила локальная модель. Транзиентный
+    /// флаг (не персистится): лейблы честно показывают локальный режим; успешный облачный ответ снимает.
+    public var cloudAIDown = false
 
     /// Ключи pending-обновления — публичные, чтобы `applicationWillTerminate` мог применить без инстанса стора.
     public static let pendingVersionKey = "sage.update.pending.version"
@@ -68,7 +78,32 @@ public final class SettingsStore {
         lastUpdateCheck = d.object(forKey: "sage.update.lastcheck") as? Date
         pendingUpdateVersion = d.string(forKey: SettingsStore.pendingVersionKey)
         pendingUpdatePath = d.string(forKey: SettingsStore.pendingPathKey)
+        deepseekModel = d.string(forKey: "sage.deepseek.model") ?? ""
+        whatsNewShownVersion = d.string(forKey: "sage.whatsnew.version")
+        deepseekConnected = SettingsStore.deepseekKey() != nil
     }
+
+    /// DeepSeek API-ключ (device-bound шифрованный файл — см. SecretStore). nil = облако выключено.
+    public static func deepseekKey() -> String? {
+        let v = SecretStore.get(account: SecretStore.deepseekKeyAccount) ?? ""
+        return v.isEmpty ? nil : v
+    }
+
+    public func setDeepseekKey(_ key: String) {
+        SecretStore.set(key, account: SecretStore.deepseekKeyAccount)
+        deepseekConnected = true
+        cloudAIDown = false
+    }
+
+    public func deleteDeepseekKey() {
+        SecretStore.delete(account: SecretStore.deepseekKeyAccount)
+        deepseekModel = ""
+        deepseekConnected = false
+        cloudAIDown = false
+    }
+
+    /// Облако — активный движок ИИ (для статус-лейблов): ключ подключён, модель выбрана и облако живо.
+    public var cloudAIActive: Bool { deepseekConnected && !deepseekModel.isEmpty && !cloudAIDown }
 
     /// Активная LLM как спецификация каталога.
     public var activeLLM: LLMModelSpec? { ModelCatalog.llm(id: activeLLMId) }

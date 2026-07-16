@@ -38,6 +38,9 @@ public protocol ModelManaging: Sendable {
     func downloadWhisper(_ spec: WhisperModelSpec) -> AsyncStream<DownloadState>
     func cancel(id: String) async
     func isDownloading(_ id: String) async -> Bool
+    /// Удалить скачанную модель с диска (no-op, если сейчас качается).
+    func deleteLLM(_ id: String) async
+    func deleteWhisper(_ id: String) async
     func localURLForLLM(_ id: String) async -> URL?
     func localURLForWhisper(_ id: String) async -> URL?
 }
@@ -61,6 +64,8 @@ public protocol Inferencing: Sendable {
     func stream(_ request: InferenceRequest) -> AsyncThrowingStream<String, Error>
     func cancel() async
     func isLoaded() async -> Bool
+    /// Немедленно выгрузить модель из памяти (no-op при активной генерации/очереди).
+    func unload() async
 }
 
 // MARK: - Speech (Whisper)
@@ -112,6 +117,8 @@ public enum UpdateDownloadEvent: Sendable {
 public protocol UpdateServicing: Sendable {
     /// Проверить релизы `<owner>/<repo>`; вернуть новейший подходящий по каналу релиз НОВЕЕ `current` (или nil).
     func checkForUpdate(repo: String, current: String, channel: UpdateChannel) async throws -> UpdateRelease?
+    /// Тело GitHub-релиза ИМЕННО этой версии (окно «Что нового» после обновления). nil — релиз не найден.
+    func releaseNotes(repo: String, version: String) async throws -> String?
     /// Скачать .zip релиза и СВЕРИТЬ SHA-256; стрим прогресса, затем `.finished(localZipURL)`. Бросает при ошибке/несовпадении.
     func downloadAndVerify(_ release: UpdateRelease) -> AsyncThrowingStream<UpdateDownloadEvent, Error>
     /// Распаковать проверенный zip в стабильный staging, снять quarantine, вернуть путь к `.app`. Живой бандл НЕ трогает.

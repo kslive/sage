@@ -16,8 +16,6 @@ public final class SpeechService: NSObject, Transcribing, @unchecked Sendable {
     private var cachedKey: String?
     private var partialTask: Task<Void, Never>?
     private var transcribing = false
-    /// Поколение таймера выгрузки кэша: новая запись/новый таймер инвалидирует ранее запланированную выгрузку.
-    private var cacheIdleGen = 0
 
     override public init() { super.init() }
 
@@ -41,7 +39,6 @@ public final class SpeechService: NSObject, Transcribing, @unchecked Sendable {
             self.modelURL = modelURL
             self.language = language
             self.samples = []
-            self.cacheIdleGen += 1
             lock.unlock()
             continuation.yield(.phase(.listening))
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -71,19 +68,14 @@ public final class SpeechService: NSObject, Transcribing, @unchecked Sendable {
         return w
     }
 
-    /// Выгрузка whisper-кэша по простою: модель (142 МБ base … 1.5 ГБ large) не живёт в памяти
-    /// между сессиями записи. Грейс 60 с — серия записей подряд по-прежнему без перезагрузки (Ит.52).
-    private func scheduleCacheUnload() {
-        lock.lock(); cacheIdleGen += 1; let gen = cacheIdleGen; lock.unlock()
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 60) { [weak self] in
-            guard let self else { return }
-            self.lock.lock()
-            if self.cacheIdleGen == gen, self.whisper == nil {
-                self.cachedWhisper = nil
-                self.cachedKey = nil
-            }
-            self.lock.unlock()
-        }
+    /// Немедленная выгрузка whisper-кэша после финальной транскрипции: модель (142 МБ base …
+    /// 1.5 ГБ large) не живёт в памяти между сессиями записи. Следующая запись перезагрузит
+    /// её в фоне (bring-up Ит.52 — UI не блокируется).
+    private func unloadCache() {
+        lock.lock()
+        cachedWhisper = nil
+        cachedKey = nil
+        lock.unlock()
     }
 
     /// Живое (частичное) распознавание: каждые ~2.5с прогоняем накопленный буфер.
@@ -137,7 +129,7 @@ public final class SpeechService: NSObject, Transcribing, @unchecked Sendable {
             cont.yield(.finished(""))
             cont.finish()
             lock.lock(); whisper = nil; lock.unlock()
-            scheduleCacheUnload()
+            unloadCache()
             return
         }
         do {
@@ -149,7 +141,7 @@ public final class SpeechService: NSObject, Transcribing, @unchecked Sendable {
         }
         cont.finish()
         lock.lock(); whisper = nil; lock.unlock()
-        scheduleCacheUnload()
+        unloadCache()
     }
 
     // MARK: - Запись

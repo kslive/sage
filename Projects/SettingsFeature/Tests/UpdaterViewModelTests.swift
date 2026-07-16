@@ -173,4 +173,41 @@ final class UpdaterViewModelTests: XCTestCase {
         let (vm, _, _, _) = makeEnv()
         XCTAssertFalse(vm.prepareUpdateForRestart())
     }
+    // MARK: - Что нового (анонс после обновления, один раз на версию)
+
+    func testWhatsNewShownOncePerVersion() async {
+        let (vm, mock, settings, _) = makeEnv()
+        mock.notesToReturn = "**Sage** — тестовые нотсы"
+        await vm.maybeLoadWhatsNew()
+        XCTAssertEqual(vm.whatsNew?.version, CoreKit.appVersion)
+        XCTAssertEqual(mock.notesRequestedVersion, CoreKit.appVersion)
+        vm.dismissWhatsNew()
+        XCTAssertNil(vm.whatsNew)
+        XCTAssertEqual(settings.whatsNewShownVersion, CoreKit.appVersion)
+        await vm.maybeLoadWhatsNew()
+        XCTAssertNil(vm.whatsNew, "второй раз для той же версии не показываем")
+    }
+
+    /// Релиз без нотсов — помечаем версию без показа окна.
+    func testWhatsNewEmptyNotesMarksWithoutShowing() async {
+        let (vm, mock, settings, _) = makeEnv()
+        mock.notesToReturn = "   \n  "
+        await vm.maybeLoadWhatsNew()
+        XCTAssertNil(vm.whatsNew)
+        XCTAssertEqual(settings.whatsNewShownVersion, CoreKit.appVersion)
+    }
+
+    /// Сетевая ошибка НЕ помечает версию — анонс покажется при следующем онлайн-запуске.
+    func testWhatsNewNetworkErrorRetriesNextLaunch() async {
+        let (vm, mock, settings, _) = makeEnv()
+        mock.notesError = URLError(.notConnectedToInternet)
+        await vm.maybeLoadWhatsNew()
+        XCTAssertNil(vm.whatsNew)
+        XCTAssertNil(settings.whatsNewShownVersion)
+        mock.notesError = nil
+        mock.notesToReturn = "нотсы"
+        await vm.maybeLoadWhatsNew()
+        XCTAssertNotNil(vm.whatsNew)
+    }
 }
+

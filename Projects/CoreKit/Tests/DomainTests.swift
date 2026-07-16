@@ -3,14 +3,24 @@ import XCTest
 @testable import CoreKit
 
 final class ModelCatalogTests: XCTestCase {
-    func testDefaultLLMIsQwen8B() {
-        XCTAssertEqual(ModelCatalog.defaultLLM, "qwen3-8b")
+    func testDefaultLLMIsInstruct2507() {
+        XCTAssertEqual(ModelCatalog.defaultLLM, "qwen3-4b-2507")
         XCTAssertEqual(ModelCatalog.defaultWhisper, "base")
     }
 
-    func testQwen8BIsRecommendedAndFirst() {
-        XCTAssertEqual(ModelCatalog.llms.first?.id, "qwen3-8b")
-        XCTAssertTrue(ModelCatalog.llm(id: "qwen3-8b")?.recommended == true)
+    /// Каталог отсортирован по размеру (меньшие первыми), рекомендована Instruct-2507 DWQ.
+    func testCatalogOrderAndRecommended() {
+        XCTAssertEqual(ModelCatalog.llms.first?.id, "qwen3-1.7b-dwq")
+        XCTAssertTrue(ModelCatalog.llm(id: "qwen3-4b-2507")?.recommended == true)
+        let sizes = ModelCatalog.llms.map(\.sizeBytes)
+        XCTAssertEqual(sizes, sizes.sorted(), "порядок по размеру ASC")
+    }
+
+    /// Каждая модель каталога — РОВНО в одной группе, иначе карточка молча исчезнет из списков.
+    func testEveryModelInExactlyOneGroup() {
+        let grouped = ModelCatalog.groups().flatMap(\.models).map(\.id)
+        XCTAssertEqual(grouped.sorted(), ModelCatalog.llms.map(\.id).sorted())
+        XCTAssertEqual(grouped.count, Set(grouped).count, "без дублей между группами")
     }
 
     func testGemmaAndQwen25Removed() {

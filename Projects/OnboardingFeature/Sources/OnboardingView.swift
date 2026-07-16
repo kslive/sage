@@ -137,8 +137,11 @@ public struct OnboardingView: View {
             stepLabel(s.ob.stepModel)
             Text(s.ob.modelTitle).sageType(.h1).foregroundStyle(palette.tx).padding(.bottom, Spacing.xs)
             Text(s.ob.modelSub).font(.sage(14)).foregroundStyle(palette.tx2).padding(.bottom, Spacing.lg)
-            VStack(spacing: 9) {
-                ForEach(ModelCatalog.llms) { spec in
+            VStack(alignment: .leading, spacing: 9) {
+                ForEach(ModelCatalog.groups(), id: \.kind) { group in
+                    Text(obGroupTitle(group.kind)).font(.sage(11, .medium)).foregroundStyle(palette.tx3)
+                        .padding(.top, group.kind == .light ? 0 : 6)
+                    ForEach(group.models) { spec in
                     optionRow(selected: vm.selectedModelID == spec.id) { vm.selectModel(spec.id) } content: {
                         modelIcon(spec.emoji)
                         VStack(alignment: .leading, spacing: 2) {
@@ -154,8 +157,17 @@ public struct OnboardingView: View {
                             Text(vm.modelRAM(spec.id)).font(.sage(11)).foregroundStyle(palette.tx3)
                         }
                     }
+                    }
                 }
             }
+        }
+    }
+
+    private func obGroupTitle(_ kind: ModelCatalog.LLMGroupKind) -> String {
+        switch kind {
+        case .light: s.models.groupLight
+        case .standard: s.models.groupStandard
+        case .max: s.models.groupMax
         }
     }
 

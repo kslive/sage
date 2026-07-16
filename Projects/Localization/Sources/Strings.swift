@@ -41,8 +41,10 @@ public struct Strings: Sendable {
     }
 
     public struct App: Sendable {
-        public let files, localRunning, outline, info, words, edited: String
+        public let files, localRunning, cloudRunning, outline, info, words, edited: String
         public let askInline: String
+        public let whatsNewTitle, whatsNewOk: String
+        public let revealInFinder: String
         public let aiThinking, aiImproving, aiContinuing, aiSummarizing: String
         public let aiApplied, aiFailed: String
         public let newNote, openFolder, emptyVaultTitle, emptyVaultBody: String
@@ -84,6 +86,8 @@ public struct Strings: Sendable {
         public let autoUpdate, autoUpdateSub, youHaveVersion: String
         public let updateReadyTitle, updateAvailableTitle, openAction: String
         public let updateErrNetwork, updateErrChecksum, updateErrNoApp, updateErrInstall, downloadIncomplete: String
+        public let deepseekSection, deepseekSub, deepseekPlaceholder, deepseekCheck: String
+        public let deepseekConnected, deepseekModelLabel, deepseekDelete, deepseekInvalid: String
     }
 
     public struct Theme: Sendable {
@@ -108,6 +112,7 @@ public struct Strings: Sendable {
         public let whisperBaseDesc, whisperSmallDesc, whisperTinyDesc, whisperTurboDesc: String
         public let whisperNone, whisperNoneDesc: String
         public let notInstalled, active, installed, downloadingStatus: String
+        public let groupLight, groupStandard, groupMax: String
     }
 
     public struct Slash: Sendable {

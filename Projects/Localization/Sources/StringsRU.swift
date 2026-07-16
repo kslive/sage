@@ -40,9 +40,10 @@ extension Strings {
         ),
         nav: Nav(search: "Поиск", editor: "Редактор", chat: "Чат с Sage"),
         app: App(
-            files: "Файлы", localRunning: "работает локально",
+            files: "Файлы", localRunning: "работает локально", cloudRunning: "облако DeepSeek",
             outline: "Структура", info: "Информация", words: "Слов", edited: "Изменён",
             askInline: "Спросить Sage об этом тексте",
+            whatsNewTitle: "Что нового в Sage", whatsNewOk: "Понятно", revealInFinder: "Показать в Finder",
             aiThinking: "Sage думает…", aiImproving: "Sage улучшает текст…",
             aiContinuing: "Sage продолжает…", aiSummarizing: "Sage подводит итог…",
             aiApplied: "Применено", aiFailed: "Не удалось получить ответ",
@@ -138,7 +139,15 @@ extension Strings {
             updateErrChecksum: "Контрольная сумма не совпала",
             updateErrNoApp: "В архиве нет приложения",
             updateErrInstall: "Не удалось установить обновление",
-            downloadIncomplete: "Загрузка не завершилась"
+            downloadIncomplete: "Загрузка не завершилась",
+            deepseekSection: "DeepSeek API",
+            deepseekSub: "Облачная модель вместо локальной. При любой ошибке ответит локальная модель.",
+            deepseekPlaceholder: "API-ключ (sk-…)",
+            deepseekCheck: "Проверить и сохранить",
+            deepseekConnected: "подключён",
+            deepseekModelLabel: "Модель",
+            deepseekDelete: "Удалить",
+            deepseekInvalid: "Ключ не подошёл"
         ),
         theme: Theme(dark: "Тёмная", light: "Светлая", auto: "Авто"),
         tray: Tray(
@@ -161,7 +170,8 @@ extension Strings {
             whisperNone: "Без голосового ввода",
             whisperNoneDesc: "Можно включить позже в настройках",
             notInstalled: "не загружена", active: "активна", installed: "загружена",
-            downloadingStatus: "Скачивание…"
+            downloadingStatus: "Скачивание…",
+            groupLight: "Лёгкие · быстро на любом Mac", groupStandard: "Стандартные · баланс скорости и качества", groupMax: "Мощные · максимум качества (16 ГБ+)"
         ),
         slash: Slash(
             aiAsk: "Спросить Sage…",

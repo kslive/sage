@@ -25,7 +25,10 @@ Sage works directly on a folder of `.md` files (like Obsidian), so your notes st
 ## Features
 
 ### 🤖 Local AI
-A large language model (Qwen3 via Apple [MLX](https://github.com/ml-explore/mlx)) runs on your Mac’s Apple-Silicon GPU. Pick the size that fits your machine — a lightweight **1.7B**, a balanced **4B**, or the highest-quality **8B**. The model downloads once, in-app, then works fully offline.
+A large language model (Qwen3 via Apple [MLX](https://github.com/ml-explore/mlx)) runs on your Mac’s Apple-Silicon GPU. Models come in clear tiers — **Light 1.7B**, **Standard 4B**, **Max 8B** — each offered as a classic build and a **DWQ** refresh (distilled quantization: measurably closer to full precision at the same size and speed); **Qwen3 4B Instruct** is the recommended default. Download, switch and **delete** models right in Settings. The model occupies memory only while it is answering: weights load on demand and are released the moment the reply finishes, so idle Sage stays lightweight. Everything downloads once, in-app, then works fully offline.
+
+### ☁️ Optional cloud AI (DeepSeek)
+Prefer a bigger brain? Paste your own **DeepSeek API key** in **Settings → AI**, pick a model from your key’s list, and chat and inline AI run through the cloud — with the local model as an automatic fallback on any error. The key is stored in a device-bound encrypted file and never leaves your Mac; remove it any time to go fully local again. The sidebar footer always shows which engine is answering.
 
 ### 💬 Chat with your vault
 Ask, summarize and rewrite. Answers are **grounded** in your own notes — Sage reads the relevant `.md` files and **cites them** with clickable links, instead of making things up. The context can be:
@@ -56,7 +59,10 @@ Speech-to-text powered by [Whisper](https://github.com/ggerganov/whisper.cpp) (w
 Version and sync your notes through **your own** Git repository (GitHub, GitLab or a self-hosted server). Auto-commit and push on a schedule, pull updates from your other machines, with conflict-aware merging. Each vault remembers its own remote and token.
 
 ### ⬇️ Over-the-air updates
-Sage keeps itself up to date from this repository’s [Releases](../../releases) — checks on launch and daily, downloads in the background, **verifies the SHA-256 checksum**, and applies the update on the next restart. Toggle **auto-update** in **Settings → Updates**. See [How auto-update works](#how-auto-update-works).
+Sage keeps itself up to date from this repository’s [Releases](../../releases) — checks on launch and daily, downloads in the background, **verifies the SHA-256 checksum**, and applies the update on the next restart. Toggle **auto-update** in **Settings → Updates**. After an update, a one-time **What’s new** window shows the release highlights in your language. See [How auto-update works](#how-auto-update-works).
+
+### 🧰 Quality of life
+**Reveal in Finder** from the file context menu · deep links (`sage://open?path=…`) open a note from other apps — Ember’s “Open in Sage” button uses this — with the sidebar expanding down to the file · new notes are created empty · double-space types a period, just like everywhere on macOS.
 
 ### 🌍 Three languages
 Full interface in **English**, **Русский** and **中文** — switch any time in Settings.
@@ -101,12 +107,15 @@ Full interface in **English**, **Русский** and **中文** — switch any 
 
 Your notes never leave your Mac. The AI model and speech recognition run **locally** on Apple Silicon; there is **no server, no account, and no analytics**. The only network traffic Sage makes is:
 - downloading the AI/voice model you choose (once),
-- checking GitHub Releases for app updates, and
-- Git sync — **only** to the repository you configure, if you enable it.
+- checking GitHub Releases for app updates,
+- Git sync — **only** to the repository you configure, if you enable it, and
+- cloud AI requests — **only** if you connect your own DeepSeek key (off by default).
+
+Secrets (your Git token and API key) live in a device-bound **encrypted file** on your Mac — they are never synced or uploaded.
 
 ## Tech
 
-Native **SwiftUI** · Apple **MLX** (Qwen3 LLM) · **whisper.cpp** speech-to-text · **CodeMirror 6** editor · plain Markdown on disk · multi-module [Tuist](https://tuist.io) project · custom lightweight over-the-air updater (GitHub Releases + SHA-256).
+Native **SwiftUI** · Apple **MLX** (Qwen3 LLM) · **whisper.cpp** speech-to-text · **CodeMirror 6** editor · plain Markdown on disk · multi-module [Tuist](https://tuist.io) project · optional **DeepSeek** cloud (bring your own key) · custom lightweight over-the-air updater (GitHub Releases + SHA-256).
 
 ## FAQ
 

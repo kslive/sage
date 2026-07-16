@@ -17,7 +17,16 @@ public actor UpdateService: UpdateServicing {
     public init() {}
 
     public func checkForUpdate(repo: String, current: String, channel: UpdateChannel) async throws -> UpdateRelease? {
-        guard let url = URL(string: "https://api.github.com/repos/\(repo)/releases?per_page=20") else { return nil }
+        let releases = try await fetchReleases(repo: repo)
+        return UpdateLogic.pickUpdate(from: releases, current: current, channel: channel)
+    }
+
+    public func releaseNotes(repo: String, version: String) async throws -> String? {
+        try await fetchReleases(repo: repo).first { $0.version == version }?.notes
+    }
+
+    private func fetchReleases(repo: String) async throws -> [UpdateRelease] {
+        guard let url = URL(string: "https://api.github.com/repos/\(repo)/releases?per_page=20") else { return [] }
         var req = URLRequest(url: url)
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         req.setValue("Sage-Updater", forHTTPHeaderField: "User-Agent")
@@ -25,8 +34,7 @@ public actor UpdateService: UpdateServicing {
         guard let http = resp as? HTTPURLResponse, (200 ..< 300).contains(http.statusCode) else {
             throw UpdateError.badResponse
         }
-        let releases = try UpdateLogic.decodeGitHubReleases(data)
-        return UpdateLogic.pickUpdate(from: releases, current: current, channel: channel)
+        return try UpdateLogic.decodeGitHubReleases(data)
     }
 
     public nonisolated func downloadAndVerify(_ release: UpdateRelease) -> AsyncThrowingStream<UpdateDownloadEvent, Error> {

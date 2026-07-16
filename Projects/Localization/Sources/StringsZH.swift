@@ -40,9 +40,10 @@ extension Strings {
         ),
         nav: Nav(search: "搜索", editor: "编辑器", chat: "与 Sage 对话"),
         app: App(
-            files: "文件", localRunning: "本地运行",
+            files: "文件", localRunning: "本地运行", cloudRunning: "DeepSeek 云端",
             outline: "大纲", info: "信息", words: "字数", edited: "修改",
             askInline: "让 Sage 处理这段文字",
+            whatsNewTitle: "Sage 新变化", whatsNewOk: "知道了", revealInFinder: "在访达中显示",
             aiThinking: "Sage 正在思考…", aiImproving: "Sage 正在润色…",
             aiContinuing: "Sage 正在续写…", aiSummarizing: "Sage 正在总结…",
             aiApplied: "已应用", aiFailed: "未能获得模型响应",
@@ -138,7 +139,15 @@ extension Strings {
             updateErrChecksum: "校验和不匹配",
             updateErrNoApp: "压缩包中没有应用",
             updateErrInstall: "无法安装更新",
-            downloadIncomplete: "下载未完成"
+            downloadIncomplete: "下载未完成",
+            deepseekSection: "DeepSeek API",
+            deepseekSub: "使用云端模型替代本地模型。出错时由本地模型回答。",
+            deepseekPlaceholder: "API 密钥 (sk-…)",
+            deepseekCheck: "验证并保存",
+            deepseekConnected: "已连接",
+            deepseekModelLabel: "模型",
+            deepseekDelete: "删除",
+            deepseekInvalid: "密钥无效"
         ),
         theme: Theme(dark: "深色", light: "浅色", auto: "自动"),
         tray: Tray(
@@ -161,7 +170,8 @@ extension Strings {
             whisperNone: "不使用语音输入",
             whisperNoneDesc: "可稍后在设置中开启",
             notInstalled: "未下载", active: "使用中", installed: "已下载",
-            downloadingStatus: "下载中…"
+            downloadingStatus: "下载中…",
+            groupLight: "轻量 · 任何 Mac 都快", groupStandard: "标准 · 速度与质量平衡", groupMax: "旗舰 · 最高质量（16 GB+）"
         ),
         slash: Slash(
             aiAsk: "询问 Sage…",

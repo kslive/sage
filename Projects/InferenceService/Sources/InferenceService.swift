@@ -10,7 +10,6 @@ public actor InferenceService: Inferencing {
     private var container: ModelContainer?
     private var loadedURL: URL?
     private var contextLimit = 8192
-    private var maxKV = 4096
     private var didSetMemoryLimits = false
 
     private var generating = false
@@ -28,16 +27,16 @@ public actor InferenceService: Inferencing {
             generating = false
             /// Вернуть буферный кэш MLX (до cacheLimit ~256 МБ) сразу после ответа,
             /// не дожидаясь idle-выгрузки весов.
-            MLX.GPU.clearCache()
+            MLX.Memory.clearCache()
             scheduleIdleUnload()
         } else {
             waiters.removeFirst().resume()
         }
     }
 
-    /// Выгрузка модели после простоя: веса (4-5 ГБ Metal-буферов для 8B) не должны жить в памяти,
-    /// когда ИИ не используется. Грейс 60 с — follow-up в живом диалоге не платит перезагрузку;
-    /// следующий запрос после выгрузки перезагрузит модель через `load()` (~2-5 с, виден «думает»).
+    /// СТРАХОВОЧНАЯ выгрузка по простою (60 с): основной путь — немедленный `unload()` от
+    /// координатора после завершения работы; таймер ловит пути, где тот не был вызван.
+    /// Между шагами агентного цикла таймер не успевает — шаги не платят перезагрузку.
     private func scheduleIdleUnload() {
         unloadTask?.cancel()
         unloadTask = Task {
@@ -50,19 +49,26 @@ public actor InferenceService: Inferencing {
     private func unloadIfIdle() {
         guard !generating, waiters.isEmpty, container != nil else { return }
         container = nil
-        MLX.GPU.clearCache()
+        MLX.Memory.clearCache()
+    }
+
+    /// Немедленная выгрузка после завершения РАБОТЫ (весь ответ чата / инлайн-действие) —
+    /// зовёт координатор. Гард не даст выгрузить модель под чужой генерацией/очередью;
+    /// 60-с таймер в release() остаётся страховкой для путей, где координатор не дозвонился.
+    public func unload() {
+        unloadIfIdle()
     }
 
     public init() {}
 
     public func isLoaded() async -> Bool { container != nil }
 
-    /// Ограничиваем буферный кэш MLX, чтобы длинный промпт + 8B-модель не выедали всю память
-    /// (иначе MLX/Metal падал на втором запросе).
+    /// Ограничиваем буферный кэш MLX: без лимита MLX кэширует КАЖДЫЙ промежуточный буфер
+    /// длинной генерации и не возвращает память (Apple в LLMEval ставит лимит именно поэтому).
     private func applyMemoryLimits() {
         guard !didSetMemoryLimits else { return }
         didSetMemoryLimits = true
-        MLX.GPU.set(cacheLimit: 256 * 1024 * 1024)
+        MLX.Memory.cacheLimit = 128 * 1024 * 1024
     }
 
     public func load(modelURL: URL, template: PromptTemplate, contextSize: Int) async throws {
@@ -70,11 +76,10 @@ public actor InferenceService: Inferencing {
         unloadTask?.cancel()
         let limits = InferenceLimits(contextSize: contextSize)
         contextLimit = limits.context
-        maxKV = limits.maxKV
         if loadedURL == modelURL, container != nil { return }
         do {
             container = try await LLMModelFactory.shared.loadContainer(
-                configuration: ModelConfiguration(directory: modelURL))
+                from: modelURL, using: SageTokenizerLoader())
             loadedURL = modelURL
             scheduleIdleUnload()
         } catch {
@@ -88,7 +93,7 @@ public actor InferenceService: Inferencing {
         guard let url = loadedURL else { return }
         container = nil
         container = try? await LLMModelFactory.shared.loadContainer(
-            configuration: ModelConfiguration(directory: url))
+            from: url, using: SageTokenizerLoader())
     }
 
     public nonisolated func stream(_ request: InferenceRequest) -> AsyncThrowingStream<String, Error> {
@@ -108,9 +113,15 @@ public actor InferenceService: Inferencing {
         let temp = Float(max(0.05, request.temperature))
         let system = request.system
         let user = request.user + "\n\n/no_think"
-        let params = GenerateParameters(
-            maxTokens: 1024, maxKVSize: maxKV, kvBits: 8, quantizedKVStart: 256,
-            temperature: temp, topP: 0.95)
+        /// БЕЗ maxKVSize: с ним KV-кэш становится ротационным, и `maybeQuantizeKVCache` пропускает
+        /// его квантизацию — память хуже И контекст молча дропается. KVCacheSimple + kvBits:8
+        /// держит память ограниченной без потери контекста. repetitionPenalty с ШИРОКИМ окном —
+        /// то, что предотвращает зацикливание абзацев (короткое окно хуже, чем без penalty).
+        var params = GenerateParameters(
+            maxTokens: 1024, kvBits: 8, quantizedKVStart: 256,
+            temperature: temp, topP: 0.95, prefillStepSize: 1024)
+        params.repetitionPenalty = 1.1
+        params.repetitionContextSize = 128
 
         let produced = (try? await generateOnce(container: container, system: system, user: user, params: params, into: continuation)) ?? false
         if !produced, !Task.isCancelled {
@@ -131,19 +142,15 @@ public actor InferenceService: Inferencing {
             let input = try await ctx.processor.prepare(input: UserInput(chat: [
                 .system(system), .user(user),
             ]))
-            var detok = NaiveStreamingDetokenizer(tokenizer: ctx.tokenizer)
             var produced = false
             var stripper = ThinkStripper()
-            _ = try MLXLMCommon.generate(input: input, parameters: params, context: ctx) { tokens in
-                if Task.isCancelled { return .stop }
-                guard let last = tokens.last else { return .more }
-                detok.append(token: last)
-                guard let piece = detok.next(), !piece.isEmpty else { return .more }
+            for await generation in try MLXLMCommon.generate(input: input, parameters: params, context: ctx) {
+                if Task.isCancelled { break }
+                guard let piece = generation.chunk, !piece.isEmpty else { continue }
                 if let out = stripper.push(piece) {
                     produced = true
                     continuation.yield(out)
                 }
-                return .more
             }
             return produced
         }

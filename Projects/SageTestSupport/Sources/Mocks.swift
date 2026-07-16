@@ -86,6 +86,7 @@ public final class MockInferencing: Inferencing, @unchecked Sendable {
     public private(set) var streamCount = 0
     public private(set) var loadCount = 0
     public private(set) var cancelCount = 0
+    public private(set) var unloadCount = 0
 
     public init() {}
 
@@ -104,6 +105,7 @@ public final class MockInferencing: Inferencing, @unchecked Sendable {
 
     public func cancel() async { cancelCount += 1 }
     public func isLoaded() async -> Bool { loadCount > 0 }
+    public func unload() async { unloadCount += 1 }
 }
 
 // MARK: - AICoordinating (скриптованные события)
@@ -193,6 +195,10 @@ public final class MockModelManaging: ModelManaging, @unchecked Sendable {
     public func installedWhispers() async -> [String] { [] }
     public func cancel(id: String) async {}
     public func isDownloading(_ id: String) async -> Bool { false }
+    public private(set) var deletedLLMs: [String] = []
+    public private(set) var deletedWhispers: [String] = []
+    public func deleteLLM(_ id: String) async { deletedLLMs.append(id) }
+    public func deleteWhisper(_ id: String) async { deletedWhispers.append(id) }
     public func localURLForLLM(_ id: String) async -> URL? { llmURL }
     public func localURLForWhisper(_ id: String) async -> URL? { whisperURL }
 }
@@ -268,10 +274,20 @@ public final class MockUpdateServicing: UpdateServicing, @unchecked Sendable {
 
     public init() {}
 
+    public var notesToReturn: String?
+    public var notesError: Error?
+    public private(set) var notesRequestedVersion: String?
+
     public func checkForUpdate(repo: String, current: String, channel: UpdateChannel) async throws -> UpdateRelease? {
         checkCount += 1
         if let checkError { throw checkError }
         return releaseToReturn
+    }
+
+    public func releaseNotes(repo: String, version: String) async throws -> String? {
+        notesRequestedVersion = version
+        if let notesError { throw notesError }
+        return notesToReturn
     }
 
     public func downloadAndVerify(_ release: UpdateRelease) -> AsyncThrowingStream<UpdateDownloadEvent, Error> {

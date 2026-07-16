@@ -74,6 +74,30 @@ public final class SettingsViewModel {
     public func activateLLM(_ id: String) { settings.activeLLMId = id }
     public func activateWhisper(_ id: String) { settings.activeWhisperId = id }
 
+    /// Удалить скачанную LLM с диска. Если удалили активную — переключиться на любую другую
+    /// установленную (иначе ИИ молча «не готов»); без установленных активная остаётся (карточка «Скачать»).
+    public func deleteLLM(_ spec: LLMModelSpec) {
+        Task {
+            await models.deleteLLM(spec.id)
+            modelStates[spec.id] = .notInstalled
+            if settings.activeLLMId == spec.id, let fallback = await models.installedLLMs().first {
+                settings.activeLLMId = fallback
+            }
+            onToast("🗑", spec.name, false)
+        }
+    }
+
+    public func deleteWhisper(_ spec: WhisperModelSpec) {
+        Task {
+            await models.deleteWhisper(spec.id)
+            modelStates[spec.id] = .notInstalled
+            if settings.activeWhisperId == spec.id {
+                settings.activeWhisperId = await models.installedWhispers().first
+            }
+            onToast("🗑", spec.name, false)
+        }
+    }
+
     // MARK: - Git
 
     public func loadGit() async {
@@ -84,7 +108,7 @@ public final class SettingsViewModel {
 
     public func connectGit() {
         guard let url = settings.resolveVaultURL(), !remoteInput.isEmpty else { return }
-        Keychain.set(tokenInput.isEmpty ? nil : tokenInput, account: Keychain.gitTokenAccount(for: url.path))
+        SecretStore.set(tokenInput.isEmpty ? nil : tokenInput, account: SecretStore.gitTokenAccount(for: url.path))
         gitSyncing = true
         NotificationCenter.default.post(name: .sageFlushAll, object: nil)
         NotificationCenter.default.post(name: .sageGitSyncBegan, object: nil)
@@ -129,7 +153,7 @@ public final class SettingsViewModel {
         guard let url = settings.resolveVaultURL() else { return }
         Task {
             await git.disconnect(at: url)
-            Keychain.set(nil, account: Keychain.gitTokenAccount(for: url.path))
+            SecretStore.set(nil, account: SecretStore.gitTokenAccount(for: url.path))
             settings.gitRemote = nil
             gitInfo = nil
             commits = []

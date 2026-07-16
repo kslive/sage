@@ -40,9 +40,10 @@ extension Strings {
         ),
         nav: Nav(search: "Search", editor: "Editor", chat: "Chat with Sage"),
         app: App(
-            files: "Files", localRunning: "running locally",
+            files: "Files", localRunning: "running locally", cloudRunning: "DeepSeek cloud",
             outline: "Outline", info: "Info", words: "Words", edited: "Edited",
             askInline: "Ask Sage about this text",
+            whatsNewTitle: "What's new in Sage", whatsNewOk: "Got it", revealInFinder: "Reveal in Finder",
             aiThinking: "Sage is thinking…", aiImproving: "Sage is improving the text…",
             aiContinuing: "Sage is continuing…", aiSummarizing: "Sage is summarizing…",
             aiApplied: "Applied", aiFailed: "No response from the model",
@@ -138,7 +139,15 @@ extension Strings {
             updateErrChecksum: "Checksum didn’t match",
             updateErrNoApp: "No app found in the archive",
             updateErrInstall: "Couldn’t install the update",
-            downloadIncomplete: "Download didn’t complete"
+            downloadIncomplete: "Download didn’t complete",
+            deepseekSection: "DeepSeek API",
+            deepseekSub: "Cloud model instead of the local one. On any error the local model answers.",
+            deepseekPlaceholder: "API key (sk-…)",
+            deepseekCheck: "Verify & save",
+            deepseekConnected: "connected",
+            deepseekModelLabel: "Model",
+            deepseekDelete: "Remove",
+            deepseekInvalid: "Key didn't work"
         ),
         theme: Theme(dark: "Dark", light: "Light", auto: "Auto"),
         tray: Tray(
@@ -161,7 +170,8 @@ extension Strings {
             whisperNone: "No voice input",
             whisperNoneDesc: "You can enable it later in settings",
             notInstalled: "not downloaded", active: "active", installed: "downloaded",
-            downloadingStatus: "Downloading…"
+            downloadingStatus: "Downloading…",
+            groupLight: "Light · fast on any Mac", groupStandard: "Standard · balanced speed and quality", groupMax: "Max · best quality (16 GB+)"
         ),
         slash: Slash(
             aiAsk: "Ask Sage…",

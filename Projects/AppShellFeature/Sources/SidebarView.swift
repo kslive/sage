@@ -63,6 +63,7 @@ public struct SidebarView: View {
     @Binding private var expanded: Set<String>
     private let selectedFileID: String?
     private let activeModelName: String
+    private let cloudAI: Bool
     private let sort: SidebarSort
     private let deleteNonce: Int
     private let actions: SidebarActions
@@ -81,7 +82,7 @@ public struct SidebarView: View {
     public init(
         workspaceName: String, vaultPath: String, tree: [FileNode],
         expanded: Binding<Set<String>>, selectedFileID: String?,
-        activeModelName: String, sort: SidebarSort = .name,
+        activeModelName: String, cloudAI: Bool = false, sort: SidebarSort = .name,
         renamingID: Binding<String?>, deleteNonce: Int = 0, actions: SidebarActions
     ) {
         self.workspaceName = workspaceName
@@ -90,6 +91,7 @@ public struct SidebarView: View {
         _expanded = expanded
         self.selectedFileID = selectedFileID
         self.activeModelName = activeModelName
+        self.cloudAI = cloudAI
         self.sort = sort
         self.deleteNonce = deleteNonce
         _renamingID = renamingID
@@ -219,7 +221,19 @@ public struct SidebarView: View {
             }
             .onChange(of: deleteNonce) { _, _ in _ = onDeleteKey() }
             .onAppear { flat = computeFlat() }
-            .onChange(of: tree) { _, _ in flat = computeFlat() }
+            .onChange(of: tree) { _, _ in
+                flat = computeFlat()
+                /// Дип-линк/смена пространства: файл выбирается ДО загрузки дерева — после догрузки
+                /// раскрываем предков до выбранного и доскролливаем (иначе он открыт, но не виден слева).
+                if let id = selectedFileID {
+                    ensureVisible(id: id)
+                    DispatchQueue.main.async {
+                        if flat.contains(where: { $0.id == id }) {
+                            withAnimation(SageMotion.quick) { proxy.scrollTo(id, anchor: .center) }
+                        }
+                    }
+                }
+            }
             .onChange(of: sort) { _, _ in flat = computeFlat() }
             .onChange(of: expanded) { _, _ in flat = computeFlat() }
             }
@@ -408,7 +422,7 @@ public struct SidebarView: View {
             StatusDot(size: 7)
             VStack(alignment: .leading, spacing: 1) {
                 Text(activeModelName).font(.sage(12, .medium)).foregroundStyle(palette.tx).lineLimit(1)
-                Text(s.app.localRunning).font(.sage(10.5)).foregroundStyle(palette.tx3)
+                Text(cloudAI ? s.app.cloudRunning : s.app.localRunning).font(.sage(10.5)).foregroundStyle(palette.tx3)
             }
             Spacer(minLength: 0)
             Button(action: actions.onSettings) {
@@ -647,9 +661,15 @@ private struct FileRow: View {
             Button { onCreateFolder() } label: { Label(strings.app.newFolder, systemImage: "folder.badge.plus") }
             Divider()
             Button { startRename() } label: { Label(strings.app.rename, systemImage: "pencil") }
+            Button { NSWorkspace.shared.activateFileViewerSelecting([node.url]) } label: {
+                Label(strings.app.revealInFinder, systemImage: "arrow.up.forward.square")
+            }
             Button(role: .destructive) { onDelete() } label: { Label(strings.app.deleteFolder, systemImage: "trash") }
         } else {
             Button { startRename() } label: { Label(strings.app.rename, systemImage: "pencil") }
+            Button { NSWorkspace.shared.activateFileViewerSelecting([node.url]) } label: {
+                Label(strings.app.revealInFinder, systemImage: "arrow.up.forward.square")
+            }
             Button(role: .destructive) { onDelete() } label: { Label(strings.common.delete, systemImage: "trash") }
         }
     }

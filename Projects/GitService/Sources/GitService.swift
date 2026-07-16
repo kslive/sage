@@ -8,8 +8,10 @@ public actor GitService: GitServicing {
 
     public init() {}
 
+    /// nonisolated: Process без общего состояния — read-only команды (log/status/remote) выполняются
+    /// ПАРАЛЛЕЛЬНО долгому sync (actor сериализует только пишущие операции против гонок index.lock).
     @discardableResult
-    private func run(_ args: [String], in url: URL) -> (code: Int32, out: String, err: String) {
+    nonisolated private func run(_ args: [String], in url: URL) -> (code: Int32, out: String, err: String) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: gitPath)
         process.arguments = ["-C", url.path] + args
@@ -55,8 +57,8 @@ public actor GitService: GitServicing {
 
     private func authedRemote(at url: URL) -> String? {
         let remote = run(["remote", "get-url", "origin"], in: url).out
-        let token = Keychain.get(account: Keychain.gitTokenAccount(for: url.path))
-            ?? Keychain.get(account: Keychain.gitTokenAccount)
+        let token = SecretStore.get(account: SecretStore.gitTokenAccount(for: url.path))
+            ?? SecretStore.get(account: SecretStore.gitTokenAccount)
         return Self.authedHTTPSRemote(remote, token: token)
     }
 
@@ -96,11 +98,13 @@ public actor GitService: GitServicing {
 
     // MARK: - API
 
-    public func isRepository(at url: URL) async -> Bool {
+    nonisolated public func isRepository(at url: URL) async -> Bool {
         run(["rev-parse", "--is-inside-work-tree"], in: url).out == "true"
     }
 
-    public func info(at url: URL) async -> GitRepoInfo? {
+    /// nonisolated: вкладка Git показывает remote/ветку/историю СРАЗУ при открытии,
+    /// не дожидаясь стартового auto-sync (актор занят сетью на секунды).
+    nonisolated public func info(at url: URL) async -> GitRepoInfo? {
         guard await isRepository(at: url) else { return nil }
         let remote = run(["remote", "get-url", "origin"], in: url).out
         let branch = run(["rev-parse", "--abbrev-ref", "HEAD"], in: url).out
@@ -234,7 +238,7 @@ public actor GitService: GitServicing {
         return trimmed.isEmpty ? "ошибка git" : String(trimmed.prefix(120))
     }
 
-    public func recentCommits(at url: URL, limit: Int) async -> [GitCommit] {
+    nonisolated public func recentCommits(at url: URL, limit: Int) async -> [GitCommit] {
         let format = "%h\u{1f}%s\u{1f}%ct"
         let out = run(["log", "-n", "\(limit)", "--format=\(format)"], in: url).out
         guard !out.isEmpty else { return [] }

@@ -24,7 +24,7 @@ let markdownService = Sage.framework("MarkdownService", dependencies: [.module("
 let gitService = Sage.framework("GitService", dependencies: [.module("CoreKit")])
 let updateService = Sage.framework("UpdateService", dependencies: [.module("CoreKit")])
 let modelService = Sage.framework("ModelService", dependencies: [.module("CoreKit"), .external(name: "Transformers")])
-let inferenceService = Sage.framework("InferenceService", dependencies: [.module("CoreKit"), .module("ModelService"), .external(name: "MLXLLM"), .external(name: "MLXLMCommon")])
+let inferenceService = Sage.framework("InferenceService", dependencies: [.module("CoreKit"), .module("ModelService"), .external(name: "MLXLLM"), .external(name: "MLXLMCommon"), .external(name: "Transformers")])
 let speechService = Sage.framework("SpeechService", dependencies: [.module("CoreKit"), .module("ModelService"), .external(name: "SwiftWhisper")])
 let chatService = Sage.framework("ChatService", dependencies: [.module("CoreKit")])
 

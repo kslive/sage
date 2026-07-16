@@ -25,7 +25,10 @@ struct RootView: View {
             if settings.onboardingComplete {
                 MainShellView(composition: composition)
             } else {
-                OnboardingView(models: composition.models, settings: settings, locale: locale) {}
+                OnboardingView(models: composition.models, settings: settings, locale: locale) {
+                    /// Свежая установка не анонсирует собственную стартовую версию — только реальные обновления.
+                    settings.whatsNewShownVersion = CoreKit.appVersion
+                }
             }
         }
         .background(palette.bg)
@@ -92,7 +95,8 @@ struct MainShellView: View {
                         tree: tree,
                         expanded: $expanded,
                         selectedFileID: highlightedFileID,
-                        activeModelName: settings.activeLLM?.name ?? "—",
+                        activeModelName: settings.cloudAIActive ? settings.deepseekModel : (settings.activeLLM?.name ?? "—"),
+                        cloudAI: settings.cloudAIActive,
                         sort: settings.sidebarSort,
                         renamingID: $renamingID,
                         deleteNonce: treeDeleteNonce,
@@ -126,6 +130,16 @@ struct MainShellView: View {
                 .transition(.opacity)
             }
             ToastHost(toasts) { route in openTaskRoute(route) }
+            if let wn = updaterVM.whatsNew {
+                WhatsNewOverlay(
+                    version: wn.version,
+                    blocks: composition.markdown.render(ReleaseNotes.announcement(wn.body, language: locale.language)),
+                    title: s.app.whatsNewTitle,
+                    okLabel: s.app.whatsNewOk,
+                    onClose: { updaterVM.dismissWhatsNew() }
+                )
+                .transition(.opacity)
+            }
         }
         .animation(SageMotion.smooth, value: router.sidebarOpen)
         .animation(SageMotion.fade, value: router.searchOpen)
@@ -162,6 +176,7 @@ struct MainShellView: View {
             await runAutoSync()
             updaterVM.checkInBackground()
             startUpdatePoll()
+            await updaterVM.maybeLoadWhatsNew()
         }
         .onChange(of: updaterVM.phase) { _, phase in handleUpdatePhase(phase) }
         .onChange(of: whisperURL) { _, url in

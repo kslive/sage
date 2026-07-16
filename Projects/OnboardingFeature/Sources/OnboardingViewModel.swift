@@ -180,21 +180,17 @@ public final class OnboardingViewModel {
     }
 
     public func modelDesc(_ id: String) -> String {
-        switch id {
-        case "qwen3-1.7b": s.models.descSmall
-        case "qwen3-4b": s.models.descMid
-        case "qwen3-8b": s.models.descLarge
-        default: ""
-        }
+        if id.hasPrefix("qwen3-1.7b") { return s.models.descSmall }
+        if id.hasPrefix("qwen3-4b") { return s.models.descMid }
+        if id.hasPrefix("qwen3-8b") { return s.models.descLarge }
+        return ""
     }
 
     public func modelRAM(_ id: String) -> String {
-        switch id {
-        case "qwen3-1.7b": s.models.ramSmall
-        case "qwen3-4b": s.models.ramMid
-        case "qwen3-8b": s.models.ramLarge
-        default: ""
-        }
+        if id.hasPrefix("qwen3-1.7b") { return s.models.ramSmall }
+        if id.hasPrefix("qwen3-4b") { return s.models.ramMid }
+        if id.hasPrefix("qwen3-8b") { return s.models.ramLarge }
+        return ""
     }
 
     public func whisperDesc(_ id: String) -> String {

@@ -31,26 +31,31 @@ final class RedesignFoundationTests: XCTestCase {
 
     // MARK: - InferenceLimits (модель-зависимый контекст)
 
-    func testInferenceLimitsScaleWithContext() {
+    func testInferenceLimitsCapsPromptBudget() {
         let l16 = InferenceLimits(contextSize: 16384)
         XCTAssertEqual(l16.context, 16384)
-        XCTAssertEqual(l16.maxKV, 16384)
-        XCTAssertEqual(l16.promptBudget, 16384 - 1024 - 512)
-        let l32 = InferenceLimits(contextSize: 32768)
-        XCTAssertEqual(l32.context, 32768)
-        XCTAssertTrue(l32.promptBudget > l16.promptBudget)   // больше окно → больше бюджет промпта
+        XCTAssertEqual(l16.promptBudget, 12000)              // кап 12k: жирный prefill лагает весь Mac
+        let l40 = InferenceLimits(contextSize: 40960)
+        XCTAssertEqual(l40.context, 40960)
+        XCTAssertEqual(l40.promptBudget, 12000)
+        let l8 = InferenceLimits(contextSize: 8192)
+        XCTAssertEqual(l8.promptBudget, 8192 - 1024 - 1200)  // ниже капа — по формуле
     }
 
     func testInferenceLimitsFloor() {
         XCTAssertEqual(InferenceLimits(contextSize: 1000).context, 2048)   // флор
-        XCTAssertGreaterThanOrEqual(InferenceLimits(contextSize: 1000).promptBudget, 512)
+        XCTAssertEqual(InferenceLimits(contextSize: 1000).promptBudget, 2000)
     }
 
     func testCatalogContextPerModel() {
         func ctx(_ id: String) -> Int? { ModelCatalog.llms.first { $0.id == id }?.contextSize }
-        XCTAssertEqual(ctx("qwen3-8b"), 12288)
-        XCTAssertEqual(ctx("qwen3-4b"), 24576)
-        XCTAssertEqual(ctx("qwen3-1.7b"), 32768)
+        for spec in ModelCatalog.llms {
+            XCTAssertEqual(spec.contextSize, 40960, "\(spec.id): Qwen3 нативно держит 40960 (бюджет промпта капается отдельно)")
+        }
+        XCTAssertNotNil(ctx("qwen3-4b-2507"), "DWQ/Instruct-карточка в каталоге")
+        XCTAssertNotNil(ctx("qwen3-8b"), "классические репо сохранены — скачанное не превращается в ре-даунлод")
+        XCTAssertEqual(ModelCatalog.defaultLLM, "qwen3-4b-2507")
+        XCTAssertEqual(ModelCatalog.llms.filter(\.recommended).count, 1)
     }
 
     // MARK: - FileNode.mdCount (рекурсивно)
@@ -186,10 +191,10 @@ final class RedesignFoundationTests: XCTestCase {
     }
 
     func testGitTokenAccountPerVault() {
-        let a = Keychain.gitTokenAccount(for: "/Users/me/VaultA")
-        let b = Keychain.gitTokenAccount(for: "/Users/me/VaultB")
+        let a = SecretStore.gitTokenAccount(for: "/Users/me/VaultA")
+        let b = SecretStore.gitTokenAccount(for: "/Users/me/VaultB")
         XCTAssertNotEqual(a, b)                              // разные хранилища → разные ключи токена
-        XCTAssertNotEqual(a, Keychain.gitTokenAccount)       // не совпадает с legacy-общим
+        XCTAssertNotEqual(a, SecretStore.gitTokenAccount)    // не совпадает с legacy-общим
         XCTAssertTrue(a.contains("/Users/me/VaultA"))        // ключ привязан к пути
     }
 

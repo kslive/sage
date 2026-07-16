@@ -32,7 +32,7 @@ final class OnboardingViewModelTests: XCTestCase {
         let vm = makeVM()
         XCTAssertEqual(vm.step, 0)
         XCTAssertEqual(vm.selectedModelID, ModelCatalog.defaultLLM)
-        XCTAssertEqual(vm.selectedModelID, "qwen3-8b")
+        XCTAssertEqual(vm.selectedModelID, "qwen3-4b-2507")
         XCTAssertEqual(vm.selectedWhisperID, ModelCatalog.defaultWhisper)
         XCTAssertEqual(vm.phase, .model)
         XCTAssertEqual(vm.fraction, 0)
