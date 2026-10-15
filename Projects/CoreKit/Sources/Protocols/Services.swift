@@ -104,25 +104,3 @@ public protocol ChatStoring: Sendable {
     func save(_ session: ChatSession) async
     func delete(id: UUID) async
 }
-
-// MARK: - OTA updates
-
-/// Событие скачивания обновления: прогресс или завершение (с локальным путём проверенного zip).
-public enum UpdateDownloadEvent: Sendable {
-    case progress(UpdateProgress)
-    case finished(URL)
-}
-
-/// Авто-обновление приложения «по воздуху» из GitHub Releases (свой лёгкий апдейтер, ad-hoc-совместим).
-public protocol UpdateServicing: Sendable {
-    /// Проверить релизы `<owner>/<repo>`; вернуть новейший подходящий по каналу релиз НОВЕЕ `current` (или nil).
-    func checkForUpdate(repo: String, current: String, channel: UpdateChannel) async throws -> UpdateRelease?
-    /// Тело GitHub-релиза ИМЕННО этой версии (окно «Что нового» после обновления). nil — релиз не найден.
-    func releaseNotes(repo: String, version: String) async throws -> String?
-    /// Скачать .zip релиза и СВЕРИТЬ SHA-256; стрим прогресса, затем `.finished(localZipURL)`. Бросает при ошибке/несовпадении.
-    func downloadAndVerify(_ release: UpdateRelease) -> AsyncThrowingStream<UpdateDownloadEvent, Error>
-    /// Распаковать проверенный zip в стабильный staging, снять quarantine, вернуть путь к `.app`. Живой бандл НЕ трогает.
-    func stage(zipURL: URL) async throws -> URL
-    /// Применить подготовленное обновление ПОСЛЕ выхода: detached-хелпер заменит `/Applications/Sage.app` и (если `relaunch`) откроет новую версию.
-    func applyOnQuit(stagedApp: URL, relaunch: Bool)
-}

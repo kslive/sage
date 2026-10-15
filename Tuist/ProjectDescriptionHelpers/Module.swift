@@ -2,21 +2,22 @@ import ProjectDescription
 
 /// Общие настройки и фабрики таргетов для проекта Sage.
 public enum Sage {
-    public static let orgPrefix = "com.sage"
+    public static let orgPrefix = "com.kslff.sage"
     public static let deployment: DeploymentTargets = .macOS("15.0")
     public static let destinations: Destinations = [.mac]
     public static let swiftVersion = "5.0"
 
-    /// Базовые build-настройки для всех таргетов: неподписанная (ad-hoc) сборка.
+    /// Базовые build-настройки для всех таргетов: автоматическая подпись командой App Store.
+    /// Неподписанная локальная сборка — через `make build/release` (переопределяет подпись, см. Makefile).
     public static var baseSettings: SettingsDictionary {
         [
             "SWIFT_VERSION": .string(swiftVersion),
-            "CODE_SIGN_IDENTITY": "-",
-            "CODE_SIGN_STYLE": "Manual",
-            "DEVELOPMENT_TEAM": "",
-            "PROVISIONING_PROFILE_SPECIFIER": "",
-            "CODE_SIGNING_REQUIRED": "NO",
+            "CODE_SIGN_IDENTITY": "Apple Development",
+            "CODE_SIGN_STYLE": "Automatic",
+            "DEVELOPMENT_TEAM": "YX6VKW92JQ",
             "ENABLE_HARDENED_RUNTIME": "NO",
+            // MLX работает только на Apple Silicon — без x86_64-слайса Mac App Store не предлагает приложение Intel-маку.
+            "ARCHS": "arm64",
             "MARKETING_VERSION": "1.1.0",
             "CURRENT_PROJECT_VERSION": "5",
             "ENABLE_USER_SCRIPT_SANDBOXING": "NO",

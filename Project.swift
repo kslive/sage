@@ -22,7 +22,6 @@ let settingsStore = Sage.framework("SettingsStore", dependencies: [.module("Core
 let vaultService = Sage.framework("VaultService", dependencies: [.module("CoreKit")])
 let markdownService = Sage.framework("MarkdownService", dependencies: [.module("CoreKit")])
 let gitService = Sage.framework("GitService", dependencies: [.module("CoreKit")])
-let updateService = Sage.framework("UpdateService", dependencies: [.module("CoreKit")])
 let modelService = Sage.framework("ModelService", dependencies: [.module("CoreKit"), .external(name: "Transformers")])
 let inferenceService = Sage.framework("InferenceService", dependencies: [.module("CoreKit"), .module("ModelService"), .external(name: "MLXLLM"), .external(name: "MLXLMCommon"), .external(name: "Transformers")])
 let speechService = Sage.framework("SpeechService", dependencies: [.module("CoreKit"), .module("ModelService"), .external(name: "SwiftWhisper")])
@@ -59,7 +58,7 @@ let searchFeature = Sage.framework(
 )
 let settingsFeature = Sage.framework(
     "SettingsFeature",
-    dependencies: uiDeps + [.module("SettingsStore"), .module("ModelService"), .module("GitService"), .module("UpdateService"), .module("InferenceService"), .module("SpeechService")]
+    dependencies: uiDeps + [.module("SettingsStore"), .module("ModelService"), .module("GitService"), .module("InferenceService"), .module("SpeechService")]
 )
 
 // MARK: - Test support + test targets
@@ -81,11 +80,6 @@ let chatFeatureTests = Sage.unitTests(for: "ChatFeature", dependencies: [.module
 let editorFeatureTests = Sage.unitTests(for: "EditorFeature", dependencies: [.module("CoreKit"), .module("SageTestSupport"), .module("VaultService"), .module("MarkdownService")])
 let searchFeatureTests = Sage.unitTests(for: "SearchFeature", dependencies: [.module("CoreKit"), .module("SageTestSupport"), .module("MarkdownService")])
 let gitServiceTests = Sage.unitTests(for: "GitService", dependencies: [.module("CoreKit")])
-let updateServiceTests = Sage.unitTests(for: "UpdateService", dependencies: [.module("CoreKit")])
-let settingsFeatureTests = Sage.unitTests(
-    for: "SettingsFeature",
-    dependencies: [.module("CoreKit"), .module("Localization"), .module("SettingsStore"), .module("UpdateService"), .module("SageTestSupport")]
-)
 // App-таргет называется "Sage" (не "App") — тест-таргет объявляем вручную, цель `.target("Sage")`.
 let appTests = Target.target(
     name: "AppTests",
@@ -117,7 +111,7 @@ let allFeatures: [TargetDependency] = [
 
 let allServices: [TargetDependency] = [
     .module("SettingsStore"), .module("VaultService"), .module("MarkdownService"),
-    .module("GitService"), .module("UpdateService"), .module("ModelService"), .module("InferenceService"),
+    .module("GitService"), .module("ModelService"), .module("InferenceService"),
     .module("SpeechService"), .module("ChatService"),
 ]
 
@@ -127,6 +121,24 @@ if command -v swiftlint >/dev/null 2>&1; then
   swiftlint lint --quiet --config "$SRCROOT/.swiftlint.yml"
 else
   echo "warning: SwiftLint не найден — пропускаю."
+fi
+"""
+
+// MLX ищет шейдеры как `mlx.metallib` рядом с бинарём Cmlx, а Tuist кладёт их в фреймворк как
+// `Resources/default.metallib` → без копии MLX падает "Failed to load the default metallib".
+// Делаем это в самой сборке (а не только в `make release`), чтобы фикс попал и в Xcode Archive,
+// и переподписываем фреймворк identity таргета: ad-hoc вложенный фреймворк не пройдёт валидацию
+// App Store. Скрипт идёт до финальной подписи приложения, так что её печать остаётся валидной.
+let fixMetallibScript = """
+set -e
+FW="${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/Cmlx.framework"
+RES="${FW}/Versions/A/Resources"; [ -d "${RES}" ] || RES="${FW}/Resources"
+if [ -f "${RES}/default.metallib" ]; then
+  cp -f "${RES}/default.metallib" "${RES}/mlx.metallib"
+  codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY:--}" --timestamp=none "${FW}"
+  echo "metallib: создан ${RES}/mlx.metallib, Cmlx.framework переподписан"
+else
+  echo "warning: default.metallib не найден в ${FW} — MLX не загрузит шейдеры"
 fi
 """
 
@@ -142,7 +154,7 @@ let app = Target.target(
         "CFBundleVersion": "$(CURRENT_PROJECT_VERSION)",
         "CFBundleURLTypes": [
             [
-                "CFBundleURLName": "com.sage.app",
+                "CFBundleURLName": "\(Sage.orgPrefix).app",
                 "CFBundleURLSchemes": ["sage"],
             ],
         ],
@@ -152,11 +164,15 @@ let app = Target.target(
         "NSMicrophoneUsageDescription": "Sage использует микрофон для голосового ввода: распознавание речи Whisper работает локально на вашем Mac.",
         "NSSupportsAutomaticTermination": true,
         "NSSupportsSuddenTermination": true,
+        // Только системное шифрование (HTTPS, CryptoKit) — освобождено от экспортной декларации.
+        "ITSAppUsesNonExemptEncryption": false,
     ]),
     sources: ["Projects/App/Sources/**"],
     resources: ["Projects/App/Resources/**"],
+    entitlements: .file(path: "Projects/App/Sage.entitlements"),
     scripts: [
         .pre(script: swiftLintScript, name: "SwiftLint", basedOnDependencyAnalysis: false),
+        .post(script: fixMetallibScript, name: "Fix MLX metallib lookup", basedOnDependencyAnalysis: false),
     ],
     dependencies: allFeatures + allServices,
     settings: .settings(base: Sage.baseSettings.merging(["ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon"]) { _, new in new })
@@ -181,7 +197,7 @@ let project = Project(
     ),
     targets: [
         coreKit, localization, designSystem,
-        settingsStore, vaultService, markdownService, gitService, updateService,
+        settingsStore, vaultService, markdownService, gitService,
         modelService, inferenceService, speechService, chatService,
         appShellFeature, onboardingFeature, editorFeature,
         chatFeature, searchFeature, settingsFeature,
@@ -191,6 +207,6 @@ let project = Project(
         coreKitTests, designSystemTests, localizationTests, vaultServiceTests, markdownServiceTests,
         modelServiceTests, settingsStoreTests, chatServiceTests, appShellFeatureTests,
         chatFeatureTests, editorFeatureTests, searchFeatureTests, gitServiceTests,
-        updateServiceTests, settingsFeatureTests, appTests,
+        appTests,
     ]
 )

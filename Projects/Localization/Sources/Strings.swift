@@ -43,7 +43,6 @@ public struct Strings: Sendable {
     public struct App: Sendable {
         public let files, localRunning, cloudRunning, outline, info, words, edited: String
         public let askInline: String
-        public let whatsNewTitle, whatsNewOk: String
         public let revealInFinder: String
         public let aiThinking, aiImproving, aiContinuing, aiSummarizing: String
         public let aiApplied, aiFailed: String
@@ -81,11 +80,6 @@ public struct Strings: Sendable {
         public let autoSync, autoSyncSub, syncFrequency, syncFrequencySub: String
         public let freqOnChange, freqEvery5, freqHourly, freqManual, recentCommits, syncNow, syncing: String
         public let version, chipLocal, chipSilicon, chipMarkdown: String
-        public let updates, updatesSub, upToDate, checkingUpdates, installingUpdate, checkUpdates, checkNow, lastChecked: String
-        public let updateAvailable, updateNow, downloadingUpdate, updateReady, restartNow, updateFailed, retryUpdate: String
-        public let autoUpdate, autoUpdateSub, youHaveVersion: String
-        public let updateReadyTitle, updateAvailableTitle, openAction: String
-        public let updateErrNetwork, updateErrChecksum, updateErrNoApp, updateErrInstall, downloadIncomplete: String
         public let deepseekSection, deepseekSub, deepseekPlaceholder, deepseekCheck: String
         public let deepseekConnected, deepseekModelLabel, deepseekDelete, deepseekInvalid: String
     }

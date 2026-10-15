@@ -7,7 +7,6 @@ import SwiftUI
 public struct SettingsView: View {
     @Binding private var tab: SettingsTab
     @State private var vm: SettingsViewModel
-    private let updaterVM: UpdaterViewModel
     @AppStorage("sage.settingsNavWidth") private var navWidthRaw: Double = 210
     private let onChangeVault: () -> Void
 
@@ -30,13 +29,12 @@ public struct SettingsView: View {
     @Environment(SettingsStore.self) private var settings
 
     public init(
-        tab: Binding<SettingsTab>, models: ModelManaging, git: GitServicing, updaterVM: UpdaterViewModel,
+        tab: Binding<SettingsTab>, models: ModelManaging, git: GitServicing,
         settings: SettingsStore, onChangeVault: @escaping () -> Void,
         onToast: @escaping (String, String, Bool) -> Void
     ) {
         _tab = tab
         self.onChangeVault = onChangeVault
-        self.updaterVM = updaterVM
         _vm = State(wrappedValue: SettingsViewModel(models: models, git: git, settings: settings, onToast: onToast))
     }
 
@@ -110,7 +108,6 @@ public struct SettingsView: View {
         case .ai: aiTab
         case .appearance: appearanceTab
         case .git: gitTab
-        case .updates: updatesTab
         case .about: aboutTab
         }
     }
@@ -500,139 +497,6 @@ public struct SettingsView: View {
 
     // MARK: - About
 
-    // MARK: - Обновления (OTA по воздуху, макет Section 8)
-
-    private var updatesTab: some View {
-        @Bindable var settings = settings
-        return VStack(alignment: .leading, spacing: 0) {
-            tabHeader(s.settings.updates, s.settings.updatesSub)
-            updateStatusRow
-            updateActionArea
-            settingRow(s.settings.autoUpdate, s.settings.autoUpdateSub) { SageToggle(isOn: $settings.autoUpdate) }
-            settingRow(s.settings.checkUpdates, lastCheckText, divider: false) {
-                Button { updaterVM.checkNow() } label: {
-                    Text(s.settings.checkNow).font(.sage(12.5)).foregroundStyle(palette.tx2)
-                        .padding(.vertical, 7).padding(.horizontal, 13)
-                        .overlay(RoundedRectangle(cornerRadius: Radius.sm).strokeBorder(palette.bd, lineWidth: 1))
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain).hoverHighlight(palette.bgh)
-            }
-        }
-        .task { updaterVM.checkInBackground() }
-    }
-
-    private var updateStatusRow: some View {
-        HStack(spacing: 14) {
-            AppMark(size: 44)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(CoreKit.appName) \(updaterVM.currentVersion)").font(.sage(15, .semibold)).foregroundStyle(palette.tx)
-                Text(statusSubtitle).font(.sage(12)).foregroundStyle(palette.tx3)
-            }
-            Spacer()
-            updateStatusTrailing
-        }
-        .padding(.bottom, 18)
-    }
-
-    @ViewBuilder private var updateStatusTrailing: some View {
-        switch updaterVM.phase {
-        case .checking, .downloading, .installing:
-            SageSpinner(size: 16)
-        case .upToDate:
-            HStack(spacing: 6) {
-                Image(systemName: "checkmark").font(.system(size: 10, weight: .bold))
-                Text(s.settings.upToDate).font(.sage(11.5, .semibold))
-            }
-            .foregroundStyle(palette.ac)
-            .padding(.vertical, 5).padding(.horizontal, 11)
-            .background(palette.acs, in: Capsule())
-        default: EmptyView()
-        }
-    }
-
-    @ViewBuilder private var updateActionArea: some View {
-        switch updaterVM.phase {
-        case let .available(r):
-            updateBanner(icon: "arrow.down", tint: palette.ac,
-                         title: "\(s.settings.updateAvailable) \(r.version)", subtitle: releaseMeta(r)) {
-                updateActionButton(s.settings.updateNow) { updaterVM.update() }
-            }
-        case let .downloading(f):
-            VStack(alignment: .leading, spacing: 9) {
-                Text("\(s.settings.downloadingUpdate) \(updaterVM.pendingRelease?.version ?? "")…  \(Int(f * 100))%")
-                    .font(.sage(13, .semibold)).foregroundStyle(palette.tx)
-                LinearProgress(fraction: f)
-            }
-            .padding(15)
-            .background(palette.bg2, in: RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(palette.bd, lineWidth: 1))
-            .padding(.bottom, 22)
-        case let .readyToInstall(r):
-            updateBanner(icon: "checkmark", tint: palette.ac,
-                         title: "\(CoreKit.appName) \(r.version) — \(s.settings.updateReady)", subtitle: s.settings.updatesSub) {
-                updateActionButton(s.settings.restartNow) { updaterVM.restart() }
-            }
-        case let .failed(msg):
-            updateBanner(icon: "exclamationmark.triangle", tint: palette.error,
-                         title: s.settings.updateFailed, subtitle: msg) {
-                updateActionButton(s.settings.retryUpdate) { updaterVM.checkNow() }
-            }
-        default: EmptyView()
-        }
-    }
-
-    private func updateBanner<Action: View>(icon: String, tint: Color, title: String, subtitle: String,
-                                            @ViewBuilder action: () -> Action) -> some View {
-        HStack(alignment: .center, spacing: 14) {
-            Image(systemName: icon).font(.system(size: 18, weight: .semibold)).foregroundStyle(palette.onAccent)
-                .frame(width: 38, height: 38).background(tint, in: RoundedRectangle(cornerRadius: 10))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.sage(14, .semibold)).foregroundStyle(palette.tx)
-                Text(subtitle).font(.sage(12)).foregroundStyle(palette.tx2).lineLimit(2)
-            }
-            Spacer(minLength: 8)
-            action()
-        }
-        .padding(15)
-        .background(tint.opacity(0.13), in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(tint.opacity(0.28), lineWidth: 1))
-        .padding(.bottom, 22)
-    }
-
-    private func updateActionButton(_ title: String, _ act: @escaping () -> Void) -> some View {
-        Button(action: act) {
-            Text(title).font(.sage(12.5, .semibold)).foregroundStyle(palette.onAccent)
-                .padding(.vertical, 8).padding(.horizontal, 15)
-                .background(palette.ac, in: RoundedRectangle(cornerRadius: 9)).contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var statusSubtitle: String {
-        switch updaterVM.phase {
-        case .idle, .upToDate: lastCheckText
-        case .checking: s.settings.checkingUpdates
-        case .available: s.settings.updateAvailable
-        case .downloading: s.settings.downloadingUpdate
-        case .installing: s.settings.installingUpdate
-        case .readyToInstall: s.settings.updateReady
-        case .failed: s.settings.updateFailed
-        }
-    }
-
-    private var lastCheckText: String {
-        guard let date = updaterVM.lastCheck else { return s.settings.lastChecked }
-        let rel = Formatting.relativeOrJustNow(date, justNow: s.common.justNow,
-                                               locale: Locale(identifier: locale.language.localeIdentifier))
-        return "\(s.settings.lastChecked): \(rel)"
-    }
-
-    private func releaseMeta(_ r: UpdateRelease) -> String {
-        let size = Formatting.fileSize(r.sizeBytes)
-        return "\(size) · \(s.settings.youHaveVersion) \(updaterVM.currentVersion)"
-    }
-
     private var aboutTab: some View {
         VStack(spacing: 0) {
             AppMark(size: 88).padding(.bottom, 18)
@@ -691,7 +555,6 @@ public struct SettingsView: View {
         case .ai: s.settings.ai
         case .appearance: s.settings.appearance
         case .git: s.settings.git
-        case .updates: s.settings.updates
         case .about: s.settings.about
         }
     }

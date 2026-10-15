@@ -73,25 +73,4 @@ final class SettingsStoreTests: XCTestCase {
         let s2 = SettingsStore(defaults: d)
         XCTAssertEqual(s2.sidebarSort, .modified)         // персист
     }
-
-    func testUpdateFieldsDefaultsAndPersistence() {
-        let d = suite()
-        let s1 = SettingsStore(defaults: d)
-        // дефолты OTA
-        XCTAssertTrue(s1.autoUpdate)
-        XCTAssertNil(s1.lastUpdateCheck)
-        XCTAssertNil(s1.pendingUpdateVersion)
-        XCTAssertNil(s1.pendingUpdatePath)
-        // персист
-        let date = Date(timeIntervalSince1970: 1_700_000_000)
-        s1.autoUpdate = false
-        s1.lastUpdateCheck = date
-        s1.pendingUpdateVersion = "1.2.3"
-        s1.pendingUpdatePath = "/tmp/staged/Sage.app"
-        let s2 = SettingsStore(defaults: d)
-        XCTAssertFalse(s2.autoUpdate)
-        XCTAssertEqual(s2.lastUpdateCheck, date)
-        XCTAssertEqual(s2.pendingUpdateVersion, "1.2.3")
-        XCTAssertEqual(s2.pendingUpdatePath, "/tmp/staged/Sage.app")
-    }
 }

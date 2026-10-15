@@ -25,10 +25,7 @@ struct RootView: View {
             if settings.onboardingComplete {
                 MainShellView(composition: composition)
             } else {
-                OnboardingView(models: composition.models, settings: settings, locale: locale) {
-                    /// Свежая установка не анонсирует собственную стартовую версию — только реальные обновления.
-                    settings.whatsNewShownVersion = CoreKit.appVersion
-                }
+                OnboardingView(models: composition.models, settings: settings, locale: locale) {}
             }
         }
         .background(palette.bg)
@@ -80,8 +77,6 @@ struct MainShellView: View {
     @State private var gitChangeDebounce: Task<Void, Never>?
     @State private var lastGitSyncAt = Date.distantPast
 
-    @Environment(UpdaterViewModel.self) private var updaterVM
-    @State private var updatePeriodicTask: Task<Void, Never>?
 
     private var s: Strings { locale.strings }
 
@@ -130,16 +125,6 @@ struct MainShellView: View {
                 .transition(.opacity)
             }
             ToastHost(toasts) { route in openTaskRoute(route) }
-            if let wn = updaterVM.whatsNew {
-                WhatsNewOverlay(
-                    version: wn.version,
-                    blocks: composition.markdown.render(ReleaseNotes.announcement(wn.body, language: locale.language)),
-                    title: s.app.whatsNewTitle,
-                    okLabel: s.app.whatsNewOk,
-                    onClose: { updaterVM.dismissWhatsNew() }
-                )
-                .transition(.opacity)
-            }
         }
         .animation(SageMotion.smooth, value: router.sidebarOpen)
         .animation(SageMotion.fade, value: router.searchOpen)
@@ -174,11 +159,7 @@ struct MainShellView: View {
             startWatching()
             refreshGitBinding()
             await runAutoSync()
-            updaterVM.checkInBackground()
-            startUpdatePoll()
-            await updaterVM.maybeLoadWhatsNew()
         }
-        .onChange(of: updaterVM.phase) { _, phase in handleUpdatePhase(phase) }
         .onChange(of: whisperURL) { _, url in
             for vm in chatVMs.values { vm.updateWhisper(url) }
         }
@@ -223,7 +204,6 @@ struct MainShellView: View {
         .onChange(of: router.deleteSelectedNonce) { _, _ in deleteSelectedFile() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             Task { await loadTree(); pruneDeletedContexts(); pruneTasks(); await runAutoSync() }
-            updaterVM.checkInBackground()
         }
         .onReceive(NotificationCenter.default.publisher(for: .sageGitSynced)) { _ in
             Task { await loadTree() }
@@ -309,7 +289,6 @@ struct MainShellView: View {
                     tab: settingsTabBinding,
                     models: composition.models,
                     git: composition.git,
-                    updaterVM: updaterVM,
                     settings: settings,
                     onChangeVault: { openFolder() },
                     onToast: { icon, text, isError in
@@ -397,8 +376,6 @@ struct MainShellView: View {
             return router.view == .chat && chatKey(for: currentChatContext) == chatKey(for: ctx)
         case let .openInline(path):
             return router.view == .editor && router.selectedFile?.path == path
-        case .openUpdates, .restartUpdate:
-            return false
         }
     }
 
@@ -411,11 +388,6 @@ struct MainShellView: View {
             router.selectedFile = URL(fileURLWithPath: path)
             router.go(.editor)
             tasks.markRead(.inline(path: path))
-        case .openUpdates:
-            router.settingsTab = .updates
-            router.openSettings()
-        case .restartUpdate:
-            updaterVM.restart()
         }
     }
 
@@ -477,7 +449,6 @@ struct MainShellView: View {
 
     private func loadTree() async {
         guard let url = settings.resolveVaultURL() else { return }
-        _ = url.startAccessingSecurityScopedResource()
         let root = try? await composition.vault.buildTree(at: url)
         tree = root?.children ?? []
         let exists = router.selectedFile.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
@@ -536,32 +507,6 @@ struct MainShellView: View {
         switch outcome {
         case .synced, .upToDate: break
         default: let t = gitSyncToast(outcome, s); toasts.error(t.icon, t.text)
-        }
-    }
-
-    /// OTA: периодическая фоновая проверка обновлений (раз в сутки; сама проверка троттлится по lastUpdateCheck).
-    private func startUpdatePoll() {
-        updatePeriodicTask?.cancel()
-        updatePeriodicTask = Task { @MainActor in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(24 * 3600))
-                if Task.isCancelled { break }
-                updaterVM.checkInBackground()
-            }
-        }
-    }
-
-    /// OTA: фоновая фаза апдейтера → ненавязчивый тост. `.readyToInstall` (авто-режим) — «готово · Перезапустить»;
-    /// `.available` (авто выкл) — «доступно · Открыть».
-    private func handleUpdatePhase(_ phase: UpdaterPhase) {
-        switch phase {
-        case let .readyToInstall(r):
-            toasts.show(Toast(icon: "✓", text: "\(s.settings.updateReadyTitle) · \(CoreKit.appName) \(r.version)",
-                              kind: .success, action: ToastAction(label: s.settings.restartNow, route: .restartUpdate)))
-        case let .available(r):
-            toasts.show(Toast(icon: "↑", text: "\(s.settings.updateAvailableTitle) · \(r.version)",
-                              kind: .info, action: ToastAction(label: s.settings.openAction, route: .openUpdates)))
-        default: break
         }
     }
 

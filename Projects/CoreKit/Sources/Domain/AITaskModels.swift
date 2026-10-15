@@ -11,8 +11,6 @@ public enum AITaskPhase: Sendable, Equatable {
 public enum AITaskRoute: Sendable, Equatable {
     case openChat(ChatContext)
     case openInline(path: String)
-    case openUpdates
-    case restartUpdate
 }
 
 /// Канонический ключ задачи. Строка `.raw` совпадает со схемой chatKey приложения
