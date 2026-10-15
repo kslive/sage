@@ -117,7 +117,8 @@ let allServices: [TargetDependency] = [
 
 let swiftLintScript = """
 export PATH="/opt/homebrew/bin:$HOME/.local/share/mise/shims:$PATH"
-if command -v swiftlint >/dev/null 2>&1; then
+# `swiftlint version`, а не `command -v`: shim mise без заданной версии находится, но не запускается.
+if swiftlint version >/dev/null 2>&1; then
   swiftlint lint --quiet --config "$SRCROOT/.swiftlint.yml"
 else
   echo "warning: SwiftLint не найден — пропускаю."
