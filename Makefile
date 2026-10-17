@@ -91,8 +91,8 @@ release: ## Release-сборка → неподписанный .app в dist/ (�
 	@echo "✅ Готово: $(DIST)/$(APP_NAME).app"
 
 reset reset-state: ## Полностью сбросить состояние приложения (настройки + модели + чаты) — для теста онбординга с нуля
-	defaults delete com.sage.app 2>/dev/null || true
-	rm -rf "$(HOME)/Library/Application Support/Sage"
+	defaults delete com.kslff.sage.app 2>/dev/null || true
+	rm -rf "$(HOME)/Library/Containers/com.kslff.sage.app/Data/Library/Application Support/Sage"
 	@echo "🧹 Состояние Sage сброшено (онбординг при следующем запуске)"
 
 install: release ## Установить в /Applications (состояние СОХРАНЯЕТСЯ; для сброса — make reset)
@@ -101,8 +101,8 @@ install: release ## Установить в /Applications (состояние С
 	xattr -dr com.apple.quarantine "/Applications/$(APP_NAME).app" || true
 	@echo "✅ Установлено: /Applications/$(APP_NAME).app (модели/онбординг/хранилище сохранены)"
 
-package: release ## Упаковать dist/Sage.app → zip + sha256 (ассеты для GitHub-релиза = OTA-фид)
+package: release ## Упаковать dist/Sage.app → zip + sha256 (для ручной раздачи/архива; не для самообновления)
 	@VER=$$(grep MARKETING_VERSION Tuist/ProjectDescriptionHelpers/Module.swift | head -1 | sed -E 's/.*"([0-9.]+)".*/\1/'); \
 	cd "$(DIST)" && ditto -c -k --sequesterRsrc --keepParent "$(APP_NAME).app" "$(APP_NAME)-$$VER.zip"; \
 	shasum -a 256 "$(APP_NAME)-$$VER.zip" | awk '{print $$1}' > "$(APP_NAME)-$$VER.zip.sha256"; \
-	echo "📦 dist/$(APP_NAME)-$$VER.zip (+ .sha256) — залить в GitHub Release v$$VER (SHA256 также в тело релиза)"
+	echo "📦 dist/$(APP_NAME)-$$VER.zip (+ .sha256) — для ручной раздачи/архива"

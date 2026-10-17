@@ -131,7 +131,6 @@ public final class OnboardingViewModel {
 
     public func finish() {
         if let url = folderURL {
-            _ = url.startAccessingSecurityScopedResource()
             settings.setVault(url: url)
         }
         settings.activeLLMId = selectedModelID

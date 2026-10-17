@@ -8,15 +8,12 @@ import OnboardingFeature
 import SettingsFeature
 import SettingsStore
 import SwiftUI
-import UpdateService
 import VaultService
 
-/// При Cmd-Q/завершении даём открытому редактору синхронно сбросить несохранённое (анти-потеря данных)
-/// и применяем подготовленное OTA-обновление (если есть) после выхода (вступит в силу при следующем запуске).
+/// При Cmd-Q/завершении даём открытому редактору синхронно сбросить несохранённое (анти-потеря данных).
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         NotificationCenter.default.post(name: .sageFlushAll, object: nil)
-        UpdateService.applyPendingOnQuit()
     }
 }
 
@@ -29,7 +26,6 @@ struct SageApp: App {
     @State private var router = AppRouter()
     @State private var toasts = ToastCenter()
     @State private var tasks = AITaskRegistry()
-    @State private var updaterVM: UpdaterViewModel
     private let composition: AppComposition
 
     init() {
@@ -51,7 +47,6 @@ struct SageApp: App {
             vault: vault
         )
         composition = AppComposition.make(ai: ai, vault: vault)
-        _updaterVM = State(initialValue: UpdaterViewModel(updater: composition.updater, settings: settings, locale: locale))
     }
 
     var body: some Scene {
@@ -63,7 +58,6 @@ struct SageApp: App {
                 .environment(router)
                 .environment(toasts)
                 .environment(tasks)
-                .environment(updaterVM)
                 .frame(minWidth: 920, minHeight: 620)
                 .sageTheme(theme)
                 .onOpenURL { url in handleDeepLink(url) }
@@ -99,7 +93,8 @@ struct SageApp: App {
     /// только существующий файл. Файл ВНЕ текущего пространства — переключаем
     /// пространство: на `root`, если он передан, существует и содержит файл
     /// (Ember раскладывает экспорт по подпапкам дат — без `root` пространством
-    /// стала бы голая папка даты вместо волта), иначе на папку файла. Сброс
+    /// стала бы голая папка даты вместо волта), иначе на папку файла. Под App Sandbox
+    /// доступ к такой папке даёт только пользователь — подтверждаем её в панели. Сброс
     /// selectedFile в onChange(vaultPath) обходится через pendingExternalOpen.
     private func handleDeepLink(_ url: URL) {
         guard url.scheme == "sage", (url.host ?? "") == "open",
@@ -109,14 +104,28 @@ struct SageApp: App {
         let fileURL = URL(fileURLWithPath: path).standardizedFileURL
         let root = settings.resolveVaultURL()?.standardizedFileURL.path ?? ""
         let inVault = !root.isEmpty && (fileURL.path == root || fileURL.path.hasPrefix(root + "/"))
+        activateApp()
         if inVault {
             router.selectedFile = fileURL
             router.go(.editor)
         } else {
+            guard let granted = requestFolderAccess(proposed: externalVaultRoot(for: fileURL, comps: comps)),
+                  fileURL.path.hasPrefix(granted.standardizedFileURL.path + "/") else { return }
             router.pendingExternalOpen = fileURL
-            settings.setVault(url: externalVaultRoot(for: fileURL, comps: comps))
+            settings.setVault(url: granted)
         }
-        activateApp()
+    }
+
+    /// Панель выбора папки, открытая на `proposed`: под App Sandbox папка вне
+    /// хранилища становится доступной только после явного выбора пользователем.
+    private func requestFolderAccess(proposed: URL) -> URL? {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = proposed
+        panel.prompt = locale.strings.ob.chooseFolder
+        return panel.runModal() == .OK ? panel.url : nil
     }
 
     /// Корень пространства для внешнего файла: валидный `root`-параметр,

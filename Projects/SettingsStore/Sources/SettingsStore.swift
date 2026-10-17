@@ -31,28 +31,14 @@ public final class SettingsStore {
     public var gitFrequency: GitSyncFrequency {
         didSet { d.set(gitFrequency.rawValue, forKey: "sage.git.freq") }
     }
-    /// Автоматически скачивать и устанавливать обновления в фоне.
-    public var autoUpdate: Bool { didSet { d.set(autoUpdate, forKey: "sage.update.auto") } }
-    /// Время последней проверки обновлений (для подписи «проверено …»).
-    public var lastUpdateCheck: Date? { didSet { d.set(lastUpdateCheck, forKey: "sage.update.lastcheck") } }
-    /// Версия подготовленного (скачанного+проверенного) обновления, ждущего применения при выходе.
-    public var pendingUpdateVersion: String? { didSet { d.set(pendingUpdateVersion, forKey: SettingsStore.pendingVersionKey) } }
-    /// Путь к распакованному `.app` подготовленного обновления (staging) — применяется при выходе.
-    public var pendingUpdatePath: String? { didSet { d.set(pendingUpdatePath, forKey: SettingsStore.pendingPathKey) } }
     /// Id модели DeepSeek, выбранной из GET /models ЭТОГО ключа ("" = не выбрана → облако выключено).
     public var deepseekModel: String { didSet { d.set(deepseekModel, forKey: "sage.deepseek.model") } }
-    /// Версия, для которой окно «Что нового» уже показано (анонс — ровно один раз на версию).
-    public var whatsNewShownVersion: String? { didSet { d.set(whatsNewShownVersion, forKey: "sage.whatsnew.version") } }
     /// Реактивное зеркало наличия DeepSeek-ключа (сам SecretStore-файл не наблюдаем) —
     /// статус-лейблы («работает локально» ↔ «облако DeepSeek») обновляются мгновенно.
     public private(set) var deepseekConnected = false
     /// Последняя облачная генерация упала (сеть/ключ) — ответила локальная модель. Транзиентный
     /// флаг (не персистится): лейблы честно показывают локальный режим; успешный облачный ответ снимает.
     public var cloudAIDown = false
-
-    /// Ключи pending-обновления — публичные, чтобы `applicationWillTerminate` мог применить без инстанса стора.
-    public static let pendingVersionKey = "sage.update.pending.version"
-    public static let pendingPathKey = "sage.update.pending.path"
 
     private let d: UserDefaults
 
@@ -74,12 +60,7 @@ public final class SettingsStore {
         autoSync = d.object(forKey: "sage.git.autosync") as? Bool ?? true
         gitRemote = d.string(forKey: "sage.git.remote")
         gitFrequency = d.string(forKey: "sage.git.freq").flatMap(GitSyncFrequency.init(rawValue:)) ?? .onChange
-        autoUpdate = d.object(forKey: "sage.update.auto") as? Bool ?? true
-        lastUpdateCheck = d.object(forKey: "sage.update.lastcheck") as? Date
-        pendingUpdateVersion = d.string(forKey: SettingsStore.pendingVersionKey)
-        pendingUpdatePath = d.string(forKey: SettingsStore.pendingPathKey)
         deepseekModel = d.string(forKey: "sage.deepseek.model") ?? ""
-        whatsNewShownVersion = d.string(forKey: "sage.whatsnew.version")
         deepseekConnected = SettingsStore.deepseekKey() != nil
     }
 
@@ -109,21 +90,37 @@ public final class SettingsStore {
     public var activeLLM: LLMModelSpec? { ModelCatalog.llm(id: activeLLMId) }
     public var activeWhisper: WhisperModelSpec? { activeWhisperId.flatMap(ModelCatalog.whisper(id:)) }
 
-    /// Разрешённый URL хранилища. Приложение не сэндбоксится (неподписанная
-    /// локальная сборка), поэтому используем обычные bookmarks.
+    /// Хранилище, к которому уже открыт sandbox-доступ (держим до выхода из приложения).
+    @ObservationIgnored private var vaultAccessURL: URL?
+
+    /// Разрешённый URL хранилища. Приложение в App Sandbox: папка из NSOpenPanel
+    /// доступна только до выхода, после перезапуска — лишь через security-scoped
+    /// bookmark. Резолвим его один раз, открываем доступ и обновляем протухший bookmark.
     public func resolveVaultURL() -> URL? {
+        if let url = vaultAccessURL { return url }
         if let data = vaultBookmark {
             var stale = false
-            if let url = try? URL(resolvingBookmarkData: data, relativeTo: nil, bookmarkDataIsStale: &stale) {
+            if let url = try? URL(resolvingBookmarkData: data, options: .withSecurityScope,
+                                  relativeTo: nil, bookmarkDataIsStale: &stale) {
+                _ = url.startAccessingSecurityScopedResource()
+                if stale { vaultBookmark = Self.securityScopedBookmark(for: url) }
+                vaultAccessURL = url
                 return url
             }
         }
         return vaultPath.isEmpty ? nil : URL(fileURLWithPath: vaultPath)
     }
 
+    /// `url` должен быть выдан пользователем (NSOpenPanel) — иначе sandbox не даст создать bookmark.
     public func setVault(url: URL) {
-        vaultBookmark = try? url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
+        vaultAccessURL?.stopAccessingSecurityScopedResource()
+        vaultAccessURL = nil
+        vaultBookmark = Self.securityScopedBookmark(for: url)
         vaultPath = url.path
+    }
+
+    private static func securityScopedBookmark(for url: URL) -> Data? {
+        try? url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
     }
 
     /// Регистрация приложения как login item (реально включает «Запуск при входе»).

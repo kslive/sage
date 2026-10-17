@@ -5,7 +5,6 @@ import GitService
 import MarkdownService
 import ModelService
 import SpeechService
-import UpdateService
 import VaultService
 
 /// Контейнер сервисов приложения (composition root).
@@ -17,7 +16,6 @@ struct AppComposition {
     let speech: Transcribing
     let chatStore: ChatStoring
     let git: GitServicing
-    let updater: UpdateServicing
 
     static func make(ai: AICoordinating, vault: VaultServicing) -> AppComposition {
         AppComposition(
@@ -27,8 +25,7 @@ struct AppComposition {
             ai: ai,
             speech: SpeechService(),
             chatStore: ChatStore(),
-            git: GitService(),
-            updater: UpdateService()
+            git: GitService()
         )
     }
 }

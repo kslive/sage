@@ -75,7 +75,6 @@ public enum SettingsTab: String, CaseIterable, Sendable, Identifiable {
     case ai
     case appearance
     case git
-    case updates
     case about
 
     public var id: String { rawValue }
@@ -85,7 +84,6 @@ public enum SettingsTab: String, CaseIterable, Sendable, Identifiable {
         case .ai: "sparkle"
         case .appearance: "circle.lefthalf.filled"
         case .git: "arrow.triangle.branch"
-        case .updates: "arrow.down.circle"
         case .about: "info.circle"
         }
     }
